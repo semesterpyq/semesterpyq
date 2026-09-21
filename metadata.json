@@ -1,0 +1,6 @@
+{
+  "name": "Semester (PYQs) - Question Papers Portal",
+  "description": "Comprehensive repository of semester question papers (PYQs). Browse, view, and download previous years question papers by course, year, and subject.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

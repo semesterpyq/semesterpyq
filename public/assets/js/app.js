@@ -1,0 +1,1 @@
+// Centralized frontend JavaScript assets
