@@ -94,37 +94,46 @@ export async function initFirestoreDatabase() {
       await setDoc(settingsRef, fallbackSettings);
     }
 
-    const initMarkerRef = doc(db, 'settings', 'seed_marker');
+    const initMarkerRef = doc(db, 'settings', 'seed_marker_v2');
     const initMarkerSnap = await getDoc(initMarkerRef);
 
     if (!initMarkerSnap.exists()) {
-      console.log('Seeding initial data to Firestore...');
-      // Seed Universities
+      console.log('Seeding initial data to Firestore (v2)...');
+      // Purge any old MPU documents if present
+      try {
+        await deleteDoc(doc(db, 'universities', 'univ-mpu'));
+        await deleteDoc(doc(db, 'courses', 'course-ba-mpu'));
+        await deleteDoc(doc(db, 'courses', 'course-bsc-mpu'));
+        await deleteDoc(doc(db, 'years', 'yr-bsc-mpu-1'));
+        await deleteDoc(doc(db, 'years', 'yr-bsc-mpu-2'));
+        await deleteDoc(doc(db, 'semesters', 'sem-mpu-bsc-1'));
+        await deleteDoc(doc(db, 'semesters', 'sem-mpu-bsc-2'));
+        await deleteDoc(doc(db, 'subjects', 'sub-mpu-math-1'));
+      } catch (cleanErr) {
+        console.warn('Old document cleanup notice:', cleanErr);
+      }
+
+      // Seed Lucknow University and clean initial records
       for (const u of fallbackUniversities) {
         await setDoc(doc(db, 'universities', u.id), u);
       }
-      // Seed Courses
       for (const c of fallbackCourses) {
         await setDoc(doc(db, 'courses', c.id), c);
       }
-      // Seed Years
       for (const y of fallbackYears) {
         await setDoc(doc(db, 'years', y.id), y);
       }
-      // Seed Semesters
       for (const s of fallbackSemesters) {
         await setDoc(doc(db, 'semesters', s.id), s);
       }
-      // Seed Subjects
       for (const sub of fallbackSubjects) {
         await setDoc(doc(db, 'subjects', sub.id), sub);
       }
-      // Seed Papers
       for (const p of fallbackPapers) {
         await setDoc(doc(db, 'papers', p.id), p);
       }
       await setDoc(initMarkerRef, { seeded: true, timestamp: Date.now() });
-      console.log('Initial data seeded successfully to Firestore!');
+      console.log('Clean database seeded successfully to Firestore!');
     }
   } catch (err) {
     console.warn('Firestore initial seeding skipped or offline:', err);

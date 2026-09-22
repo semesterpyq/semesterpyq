@@ -138,9 +138,7 @@ export const api = {
   getUniversities: async (): Promise<University[]> => {
     try {
       const fsData = await firestoreApi.getUniversities();
-      if (fsData && fsData.length > 0) return fsData;
-      const data = await request<University[]>('/api/universities');
-      return data && data.length > 0 ? data : fallbackUniversities;
+      return fsData;
     } catch {
       return fallbackUniversities;
     }
