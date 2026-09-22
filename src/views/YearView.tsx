@@ -1,65 +1,88 @@
 import React from 'react';
-import { ArrowLeft } from 'lucide-react';
-import { Course, Year } from '../types';
+import { ArrowLeft, Calendar, GraduationCap, Building2 } from 'lucide-react';
+import { Course, University, Year } from '../types';
 
 interface YearViewProps {
-  course: Course;
-  year: Year;
-  examYears: number[];
-  onSelectExamYear: (examYear: number) => void;
+  university: University | null;
+  course: Course | null;
+  years: Year[];
   onBack: () => void;
+  onSelectYear: (yearId: string) => void;
 }
 
 export const YearView: React.FC<YearViewProps> = ({
+  university,
   course,
-  year,
-  examYears,
-  onSelectExamYear,
+  years,
   onBack,
+  onSelectYear,
 }) => {
-  const shortCourseName = course.code || course.name;
-
   return (
-    <div className="max-w-4xl mx-auto space-y-6 py-4 sm:py-6 px-3 sm:px-6">
-      {/* Back Button */}
-      <div>
+    <div className="max-w-5xl mx-auto space-y-5 py-4 sm:py-6 px-2.5 sm:px-6">
+      {/* Top Header with Back Button and Circular University Logo + Name */}
+      <div className="flex items-center justify-between gap-3">
         <button
           onClick={onBack}
-          className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-medium text-xs sm:text-sm shadow-2xs transition-colors cursor-pointer"
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
+          <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <span>Back</span>
         </button>
+
+        {university && (
+          <div className="flex items-center gap-2 pl-1.5 pr-3 py-1 sm:pl-2 sm:pr-3.5 sm:py-1.5 rounded-full bg-white border border-slate-200/90 shadow-2xs text-slate-800 text-xs font-semibold max-w-[240px] sm:max-w-none truncate">
+            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-slate-50 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0 shadow-2xs">
+              {university.logo_url ? (
+                <img
+                  src={university.logo_url}
+                  alt={university.name}
+                  className="w-full h-full object-cover rounded-full"
+                />
+              ) : (
+                <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600" />
+              )}
+            </div>
+            <span className="truncate font-medium text-slate-800">{university.name}</span>
+          </div>
+        )}
       </div>
 
-      {/* Header matching Panel 3 */}
-      <div className="space-y-1">
-        <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 font-serif tracking-tight">
-          {shortCourseName} - {year.name}
+      {/* Header */}
+      <div>
+        <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-slate-900 font-serif tracking-tight">
+          Select Academic Year
         </h1>
-        <p className="text-xs sm:text-sm text-slate-500 font-medium">
-          Select Year
+        <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+          Select your year for {course?.name || 'course'}
         </p>
       </div>
 
-      {/* Examination Years Grid */}
-      {examYears.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-slate-500">
-          No question papers uploaded yet for this year.
+      {/* Years Grid (3 cols mobile / 4 cols desktop matching design) */}
+      {years.length === 0 ? (
+        <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300 p-6">
+          <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-base font-semibold text-slate-700">No Years Added Yet</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            The Admin has not added any years for {course?.name} yet.
+          </p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
-          {examYears.map((examYear, idx) => (
+        <div className="grid grid-cols-3 md:grid-cols-4 gap-2.5 sm:gap-4 md:gap-5">
+          {years.map((year) => (
             <button
-              key={examYear}
-              onClick={() => onSelectExamYear(examYear)}
-              className={`py-3.5 sm:py-5 px-3 sm:px-4 rounded-xl sm:rounded-2xl font-bold text-sm sm:text-base transition-all duration-200 shadow-xs hover:shadow-md border cursor-pointer text-center ${
-                idx === 0
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600 shadow-blue-500/10'
-                  : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200/90 hover:border-blue-400'
-              }`}
+              key={year.id}
+              onClick={() => onSelectYear(year.id)}
+              className="group relative flex flex-col items-center justify-center p-3.5 sm:p-5 md:p-6 bg-white hover:bg-blue-50/30 rounded-2xl sm:rounded-3xl border border-slate-200/90 hover:border-blue-300 shadow-2xs hover:shadow-md hover:shadow-blue-500/10 transition-all duration-200 text-center cursor-pointer hover:-translate-y-0.5"
             >
-              {examYear}
+              {/* Circular light blue icon badge with graduation cap */}
+              <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full bg-blue-100/90 group-hover:bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105 shadow-2xs">
+                <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-blue-700" />
+              </div>
+
+              {/* Centered Year Name */}
+              <h3 className="mt-2.5 sm:mt-3.5 font-bold text-xs sm:text-sm md:text-base text-slate-800 group-hover:text-blue-700 tracking-tight transition-colors line-clamp-1">
+                {year.name}
+              </h3>
             </button>
           ))}
         </div>

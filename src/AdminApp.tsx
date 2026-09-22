@@ -24,10 +24,23 @@ const defaultSettings: SiteSettings = {
   ad_banner_paper: false,
 };
 
-export default function AdminApp() {
+interface AdminAppProps {
+  onExit?: () => void;
+}
+
+export default function AdminApp({ onExit }: AdminAppProps) {
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [settings, setSettings] = useState<SiteSettings>(defaultSettings);
+
+  const handleExit = () => {
+    window.location.hash = '';
+    if (onExit) {
+      onExit();
+    } else {
+      window.location.href = '/';
+    }
+  };
 
   const loadSettings = useCallback(async () => {
     try {
@@ -112,9 +125,7 @@ export default function AdminApp() {
     return (
       <AdminLoginView
         onLoginSuccess={handleLoginSuccess}
-        onCancel={() => {
-          window.location.href = '/';
-        }}
+        onCancel={handleExit}
       />
     );
   }
@@ -125,9 +136,7 @@ export default function AdminApp() {
       settings={settings}
       onRefreshSettings={loadSettings}
       onLogout={handleLogout}
-      onViewPublicSite={() => {
-        window.location.href = '/';
-      }}
+      onViewPublicSite={handleExit}
     />
   );
 }

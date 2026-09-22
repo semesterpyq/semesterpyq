@@ -1,2 +1,1150 @@
-// @ts-nocheck
-var __defProp=Object.defineProperty;var __name=(target,value)=>__defProp(target,"name",{value,configurable:true});import fs from"fs";import path from"path";import crypto from"crypto";const DATA_DIR=path.join(process.cwd(),"data");const DB_FILE=path.join(DATA_DIR,"database.json");const UPLOADS_DIR=path.join(process.cwd(),"uploads");const PAPERS_UPLOAD_DIR=path.join(UPLOADS_DIR,"papers");if(!fs.existsSync(DATA_DIR)){fs.mkdirSync(DATA_DIR,{recursive:true})}if(!fs.existsSync(PAPERS_UPLOAD_DIR)){fs.mkdirSync(PAPERS_UPLOAD_DIR,{recursive:true})}function hashPassword(password,salt){return crypto.pbkdf2Sync(password,salt,1e4,64,"sha512").toString("hex")}__name(hashPassword,"hashPassword");function createInitialData(){const adminSalt=crypto.randomBytes(16).toString("hex");const adminHash=hashPassword((process.env.ADMIN_PASSWORD || "ratnesh@200.lbs8!"),adminSalt);const courses=[{id:"course-bsc",name:"Bachelor of Science",code:"B.Sc.",slug:"bsc",description:"Undergraduate science degree covering Physics, Chemistry, and Mathematics.",icon:"Atom",display_order:1,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"course-ba",name:"Bachelor of Arts",code:"B.A.",slug:"ba",description:"Humanities program offering English, Economics, History, and Political Science.",icon:"BookOpen",display_order:2,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"course-bcom",name:"Bachelor of Commerce",code:"B.Com",slug:"bcom",description:"Comprehensive program in Financial Accounting, Corporate Law, and Taxation.",icon:"Briefcase",display_order:3,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"course-bca",name:"Bachelor of Computer Applications",code:"BCA",slug:"bca",description:"Professional computing degree in Software Engineering, DBMS, and Web Tech.",icon:"Laptop",display_order:4,is_published:true,created_at:new Date("2024-01-10").toISOString()}];const years=[{id:"yr-bsc-1",course_id:"course-bsc",name:"1st Year",year_number:1,slug:"1st-year",display_order:1,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"yr-bsc-2",course_id:"course-bsc",name:"2nd Year",year_number:2,slug:"2nd-year",display_order:2,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"yr-bsc-3",course_id:"course-bsc",name:"3rd Year",year_number:3,slug:"3rd-year",display_order:3,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"yr-ba-1",course_id:"course-ba",name:"1st Year",year_number:1,slug:"1st-year",display_order:1,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"yr-ba-2",course_id:"course-ba",name:"2nd Year",year_number:2,slug:"2nd-year",display_order:2,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"yr-ba-3",course_id:"course-ba",name:"3rd Year",year_number:3,slug:"3rd-year",display_order:3,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"yr-bcom-1",course_id:"course-bcom",name:"1st Year",year_number:1,slug:"1st-year",display_order:1,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"yr-bcom-2",course_id:"course-bcom",name:"2nd Year",year_number:2,slug:"2nd-year",display_order:2,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"yr-bcom-3",course_id:"course-bcom",name:"3rd Year",year_number:3,slug:"3rd-year",display_order:3,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"yr-bca-1",course_id:"course-bca",name:"1st Year",year_number:1,slug:"1st-year",display_order:1,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"yr-bca-2",course_id:"course-bca",name:"2nd Year",year_number:2,slug:"2nd-year",display_order:2,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"yr-bca-3",course_id:"course-bca",name:"3rd Year",year_number:3,slug:"3rd-year",display_order:3,is_published:true,created_at:new Date("2024-01-10").toISOString()}];const subjects=[{id:"sub-bsc-1-math",course_id:"course-bsc",year_id:"yr-bsc-1",name:"Mathematics I: Differential & Integral Calculus",code:"MATH-101",slug:"calculus",description:"Limits, continuity, differential calculus, and multiple integrals.",display_order:1,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"sub-bsc-1-phy",course_id:"course-bsc",year_id:"yr-bsc-1",name:"Physics I: Mechanics & Wave Motion",code:"PHYS-101",slug:"mechanics-waves",description:"Newtonian mechanics, harmonic oscillations, and wave optics.",display_order:2,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"sub-bsc-1-chem",course_id:"course-bsc",year_id:"yr-bsc-1",name:"Chemistry I: Inorganic Chemistry",code:"CHEM-101",slug:"inorganic-chemistry",description:"Periodic properties, chemical bonding, and s-block / p-block elements.",display_order:3,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"sub-bsc-2-math",course_id:"course-bsc",year_id:"yr-bsc-2",name:"Mathematics II: Differential Equations & Vectors",code:"MATH-201",slug:"differential-equations",description:"Ordinary and partial differential equations with vector calculus.",display_order:1,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"sub-bsc-2-phy",course_id:"course-bsc",year_id:"yr-bsc-2",name:"Physics II: Optics & Electromagnetism",code:"PHYS-201",slug:"optics-electromagnetism",description:"Maxwell equations, interference, diffraction, and magnetic induction.",display_order:2,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"sub-bsc-3-math",course_id:"course-bsc",year_id:"yr-bsc-3",name:"Mathematics III: Real Analysis & Linear Algebra",code:"MATH-301",slug:"real-analysis-algebra",description:"Riemann integrals, metric spaces, eigenvalues, and vector spaces.",display_order:1,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"sub-ba-1-eng",course_id:"course-ba",year_id:"yr-ba-1",name:"English Literature: Poetry & Drama",code:"ENG-101",slug:"poetry-drama",description:"Classical Elizabethan poetry and Shakespearean drama analysis.",display_order:1,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"sub-ba-1-econ",course_id:"course-ba",year_id:"yr-ba-1",name:"Economics I: Principles of Microeconomics",code:"ECON-101",slug:"microeconomics",description:"Consumer behavior, theory of production, and market equilibrium.",display_order:2,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"sub-ba-1-pol",course_id:"course-ba",year_id:"yr-ba-1",name:"Political Science I: Political Theory",code:"POL-101",slug:"political-theory",description:"Sovereignty, liberty, justice, and democratic institutions.",display_order:3,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"sub-bcom-1-fa",course_id:"course-bcom",year_id:"yr-bcom-1",name:"Financial Accounting & Reporting",code:"COM-101",slug:"financial-accounting",description:"Journalizing, ledger accounting, bank reconciliation, and final balance sheets.",display_order:1,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"sub-bcom-1-bl",course_id:"course-bcom",year_id:"yr-bcom-1",name:"Business Regulatory Framework",code:"COM-102",slug:"business-law",description:"Indian Contract Act 1872, Sale of Goods Act, and Consumer Protection.",display_order:2,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"sub-bca-1-cprog",course_id:"course-bca",year_id:"yr-bca-1",name:"Programming in C & Data Structures",code:"BCA-101",slug:"c-programming",description:"Pointers, structures, dynamic memory, stacks, queues, and linked lists.",display_order:1,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"sub-bca-1-dig",course_id:"course-bca",year_id:"yr-bca-1",name:"Digital Electronics & Computer Architecture",code:"BCA-102",slug:"digital-electronics",description:"Logic gates, Boolean algebra, flip-flops, and ALU design.",display_order:2,is_published:true,created_at:new Date("2024-01-10").toISOString()},{id:"sub-bca-2-dbms",course_id:"course-bca",year_id:"yr-bca-2",name:"Database Management Systems & SQL",code:"BCA-201",slug:"dbms-sql",description:"Relational algebra, ER modeling, normalization, SQL queries, and ACID.",display_order:1,is_published:true,created_at:new Date("2024-01-10").toISOString()}];const papers=[{id:"qp-bsc-math-2024",course_id:"course-bsc",year_id:"yr-bsc-1",subject_id:"sub-bsc-1-math",title:"Annual Examination 2024 - Paper I: Differential Calculus",exam_year:2024,exam_session:"Main Examination",paper_code:"QP-24-BSC-M1",total_marks:75,duration:"3 Hours",file_name:"BSc_Year1_Maths_Paper1_2024.pdf",file_url:"/api/papers/qp-bsc-math-2024/file",file_size:"1.2 MB",is_published:true,view_count:342,download_count:219,created_at:new Date("2024-05-15").toISOString()},{id:"qp-bsc-math-2023",course_id:"course-bsc",year_id:"yr-bsc-1",subject_id:"sub-bsc-1-math",title:"Annual Examination 2023 - Paper I: Differential Calculus",exam_year:2023,exam_session:"Main Examination",paper_code:"QP-23-BSC-M1",total_marks:75,duration:"3 Hours",file_name:"BSc_Year1_Maths_Paper1_2023.pdf",file_url:"/api/papers/qp-bsc-math-2023/file",file_size:"1.1 MB",is_published:true,view_count:521,download_count:410,created_at:new Date("2023-05-18").toISOString()},{id:"qp-bsc-math-2022",course_id:"course-bsc",year_id:"yr-bsc-1",subject_id:"sub-bsc-1-math",title:"Annual Examination 2022 - Paper I: Differential Calculus",exam_year:2022,exam_session:"Main Examination",paper_code:"QP-22-BSC-M1",total_marks:75,duration:"3 Hours",file_name:"BSc_Year1_Maths_Paper1_2022.pdf",file_url:"/api/papers/qp-bsc-math-2022/file",file_size:"980 KB",is_published:true,view_count:430,download_count:312,created_at:new Date("2022-05-20").toISOString()},{id:"qp-bsc-phy-2024",course_id:"course-bsc",year_id:"yr-bsc-1",subject_id:"sub-bsc-1-phy",title:"Annual Examination 2024 - Paper I: Mechanics and Oscillations",exam_year:2024,exam_session:"Main Examination",paper_code:"QP-24-BSC-P1",total_marks:75,duration:"3 Hours",file_name:"BSc_Year1_Physics_Paper1_2024.pdf",file_url:"/api/papers/qp-bsc-phy-2024/file",file_size:"1.4 MB",is_published:true,view_count:289,download_count:194,created_at:new Date("2024-05-22").toISOString()},{id:"qp-bsc-phy-2023",course_id:"course-bsc",year_id:"yr-bsc-1",subject_id:"sub-bsc-1-phy",title:"Annual Examination 2023 - Paper I: Mechanics and Oscillations",exam_year:2023,exam_session:"Main Examination",paper_code:"QP-23-BSC-P1",total_marks:75,duration:"3 Hours",file_name:"BSc_Year1_Physics_Paper1_2023.pdf",file_url:"/api/papers/qp-bsc-phy-2023/file",file_size:"1.3 MB",is_published:true,view_count:410,download_count:320,created_at:new Date("2023-05-25").toISOString()},{id:"qp-bsc-chem-2024",course_id:"course-bsc",year_id:"yr-bsc-1",subject_id:"sub-bsc-1-chem",title:"Annual Examination 2024 - Paper I: Inorganic Chemistry",exam_year:2024,exam_session:"Main Examination",paper_code:"QP-24-BSC-C1",total_marks:75,duration:"3 Hours",file_name:"BSc_Year1_Chemistry_Paper1_2024.pdf",file_url:"/api/papers/qp-bsc-chem-2024/file",file_size:"1.0 MB",is_published:true,view_count:215,download_count:148,created_at:new Date("2024-05-28").toISOString()},{id:"qp-ba-eng-2024",course_id:"course-ba",year_id:"yr-ba-1",subject_id:"sub-ba-1-eng",title:"Annual Examination 2024 - Paper I: Elizabethan & Jacobean Poetry",exam_year:2024,exam_session:"Main Examination",paper_code:"QP-24-BA-ENG1",total_marks:100,duration:"3 Hours",file_name:"BA_Year1_English_Paper1_2024.pdf",file_url:"/api/papers/qp-ba-eng-2024/file",file_size:"890 KB",is_published:true,view_count:390,download_count:275,created_at:new Date("2024-04-18").toISOString()},{id:"qp-ba-econ-2024",course_id:"course-ba",year_id:"yr-ba-1",subject_id:"sub-ba-1-econ",title:"Annual Examination 2024 - Paper I: Principles of Microeconomics",exam_year:2024,exam_session:"Main Examination",paper_code:"QP-24-BA-EC1",total_marks:100,duration:"3 Hours",file_name:"BA_Year1_Economics_Paper1_2024.pdf",file_url:"/api/papers/qp-ba-econ-2024/file",file_size:"1.1 MB",is_published:true,view_count:304,download_count:211,created_at:new Date("2024-04-20").toISOString()},{id:"qp-bcom-fa-2024",course_id:"course-bcom",year_id:"yr-bcom-1",subject_id:"sub-bcom-1-fa",title:"Annual Examination 2024 - Paper I: Advanced Financial Accounting",exam_year:2024,exam_session:"Main Examination",paper_code:"QP-24-BCOM-FA1",total_marks:100,duration:"3 Hours",file_name:"BCom_Year1_FinAccounting_2024.pdf",file_url:"/api/papers/qp-bcom-fa-2024/file",file_size:"1.3 MB",is_published:true,view_count:612,download_count:489,created_at:new Date("2024-04-25").toISOString()},{id:"qp-bca-c-2024",course_id:"course-bca",year_id:"yr-bca-1",subject_id:"sub-bca-1-cprog",title:"Annual Examination 2024 - Paper I: Programming in C & Data Structures",exam_year:2024,exam_session:"Main Examination",paper_code:"QP-24-BCA-101",total_marks:100,duration:"3 Hours",file_name:"BCA_Year1_CProg_2024.pdf",file_url:"/api/papers/qp-bca-c-2024/file",file_size:"1.5 MB",is_published:true,view_count:780,download_count:590,created_at:new Date("2024-05-10").toISOString()},{id:"qp-bca-dbms-2024",course_id:"course-bca",year_id:"yr-bca-2",subject_id:"sub-bca-2-dbms",title:"Annual Examination 2024 - Paper I: Database Systems & SQL Architectures",exam_year:2024,exam_session:"Main Examination",paper_code:"QP-24-BCA-201",total_marks:100,duration:"3 Hours",file_name:"BCA_Year2_DBMS_2024.pdf",file_url:"/api/papers/qp-bca-dbms-2024/file",file_size:"1.4 MB",is_published:true,view_count:512,download_count:388,created_at:new Date("2024-05-12").toISOString()}];const settings={site_name:"Semester (PYQs)",tagline:"Semester Examination Question Paper Archives (PYQs)",college_address:"Semester (PYQs) Academic Examination Repository",contact_email:"examination@semesterpyqs.edu",contact_phone:"+91 (0522) 238-9001",logo_url:"/assets/logos/logo.jpg",favicon_url:"/assets/icons/favicon.jpg",hero_title:"Semester Question Paper Archives (PYQs)",hero_subtitle:"Official academic repository. Access, study, and download verified previous years examination question papers for all undergraduate degree streams and academic years.",notice_ticker:"\u{1F4E2} 2024 Examination Question Papers (PYQs) for all Under-Graduate courses have been uploaded. Prepare thoroughly for upcoming semester tests!",about_text:"Semester (PYQs) is committed to academic excellence. This digital question paper repository was established to provide students seamless, fast access to genuine past university examination papers without any barrier or login requirement.",seo_title:"Semester (PYQs) - Official Question Papers & Exam Archives",seo_description:"Download official question papers (PYQs) for B.Sc, B.A, B.Com, BCA and other undergraduate programs. Free PDF downloads with search and filter.",ad_banner_header:true,ad_banner_sidebar:true,ad_banner_paper:true};return{courses,years,subjects,papers,settings,admin:{id:"owner-admin-1",email:"Ramishkji@gmail.com",password_hash:adminHash,salt:adminSalt,last_login:void 0},sessions:[]}}__name(createInitialData,"createInitialData");class Database{static{__name(this,"Database")}constructor(){if(fs.existsSync(DB_FILE)){try{const raw=fs.readFileSync(DB_FILE,"utf-8");this.data=JSON.parse(raw);this.sanitizeData()}catch(err){console.error("Error reading database file, creating fresh store:",err);this.data=createInitialData();this.save()}}else{this.data=createInitialData();this.save()}}sanitizeData(){if(!this.data)return;let changed=false;const deduplicate=__name(items=>{const seen=new Set;const result=[];for(const item of items){if(!seen.has(item.id)){seen.add(item.id);result.push(item)}else{changed=true}}return result},"deduplicate");if(Array.isArray(this.data.courses)){this.data.courses=deduplicate(this.data.courses)}if(Array.isArray(this.data.years)){this.data.years=deduplicate(this.data.years)}if(Array.isArray(this.data.subjects)){this.data.subjects=deduplicate(this.data.subjects)}if(Array.isArray(this.data.papers)){this.data.papers=deduplicate(this.data.papers)}if(this.data.admin&&this.data.admin.email!=="Ramishkji@gmail.com"){this.data.admin.email="Ramishkji@gmail.com";changed=true}if(this.data.settings){if(!this.data.settings.site_name||this.data.settings.site_name==="LBS Degree College"){this.data.settings.site_name="Semester (PYQs)";if(!this.data.settings.tagline||this.data.settings.tagline.includes("LBS")){this.data.settings.tagline="Semester Examination Question Paper Archives (PYQs)"}if(!this.data.settings.hero_title||this.data.settings.hero_title.includes("LBS")){this.data.settings.hero_title="Semester Question Paper Archives (PYQs)"}changed=true}if(!this.data.settings.logo_url||this.data.settings.logo_url==="/logo.jpg"){this.data.settings.logo_url="/assets/logos/logo.jpg";changed=true}if(!this.data.settings.favicon_url||this.data.settings.favicon_url==="/logo.jpg"){this.data.settings.favicon_url="/assets/icons/favicon.jpg";changed=true}}if(changed){this.save()}}save(){try{const tempPath=`${DB_FILE}.tmp`;fs.writeFileSync(tempPath,JSON.stringify(this.data,null,2),"utf-8");fs.renameSync(tempPath,DB_FILE)}catch(err){console.error("Failed to write database file:",err)}}getSettings(){return{...this.data.settings}}updateSettings(updates){this.data.settings={...this.data.settings,...updates};this.save();return this.getSettings()}verifyAdminPassword(password){const computedHash=hashPassword(password,this.data.admin.salt);return{success:computedHash===this.data.admin.password_hash}}createAdminSession(token){const expires_at=Date.now()+7*24*60*60*1e3;this.data.sessions=this.data.sessions.filter(s=>s.expires_at>Date.now());this.data.sessions.push({token,expires_at});this.data.admin.last_login=new Date().toISOString();this.save()}verifyAdminCredentials(email,password){const cleanEmail=email.trim().toLowerCase();if(cleanEmail!=="Ramishkji@gmail.com"){return{success:false,error:"Unauthorized admin email. Access is strictly restricted."}}const computedHash=hashPassword(password,this.data.admin.salt);if(computedHash!==this.data.admin.password_hash){return{success:false,error:"Invalid institutional credentials"}}const token=crypto.randomBytes(32).toString("hex");this.createAdminSession(token);return{success:true,token}}validateSession(token){if(!token)return false;const session=this.data.sessions.find(s=>s.token===token&&s.expires_at>Date.now());return!!session}invalidateSession(token){this.data.sessions=this.data.sessions.filter(s=>s.token!==token);this.save()}getAdminProfile(){return{id:this.data.admin.id,email:this.data.admin.email,last_login:this.data.admin.last_login}}setAdminPassword(newPassword){if(newPassword&&newPassword.length>=8){const newSalt=crypto.randomBytes(16).toString("hex");this.data.admin.salt=newSalt;this.data.admin.password_hash=hashPassword(newPassword,newSalt);this.save();return true}return false}updateAdminCredentials(currentPassword,newEmail,newPassword){const currentHash=hashPassword(currentPassword,this.data.admin.salt);if(currentHash!==this.data.admin.password_hash){return{success:false,error:"Current password does not match"}}if(newEmail&&newEmail.trim()){this.data.admin.email=newEmail.trim().toLowerCase()}if(newPassword&&newPassword.length>=8){const newSalt=crypto.randomBytes(16).toString("hex");this.data.admin.salt=newSalt;this.data.admin.password_hash=hashPassword(newPassword,newSalt)}this.save();return{success:true}}getDashboardStats(){const total_downloads=this.data.papers.reduce((sum,p)=>sum+(p.download_count||0),0);const total_views=this.data.papers.reduce((sum,p)=>sum+(p.view_count||0),0);return{total_courses:this.data.courses.length,total_years:this.data.years.length,total_subjects:this.data.subjects.length,total_papers:this.data.papers.length,total_downloads,total_views}}getCourses(includeUnpublished=false){let list=[...this.data.courses];if(!includeUnpublished){list=list.filter(c=>c.is_published)}list.sort((a,b)=>a.display_order-b.display_order);return list.map(c=>{const years=this.data.years.filter(y=>y.course_id===c.id&&(includeUnpublished||y.is_published));const subjects=this.data.subjects.filter(s=>s.course_id===c.id&&(includeUnpublished||s.is_published));const papers=this.data.papers.filter(p=>p.course_id===c.id&&(includeUnpublished||p.is_published));return{...c,years_count:years.length,subjects_count:subjects.length,papers_count:papers.length}})}getCourseById(id){const course=this.data.courses.find(c=>c.id===id||c.slug===id);if(!course)return void 0;const years=this.data.years.filter(y=>y.course_id===course.id);const subjects=this.data.subjects.filter(s=>s.course_id===course.id);const papers=this.data.papers.filter(p=>p.course_id===course.id);return{...course,years_count:years.length,subjects_count:subjects.length,papers_count:papers.length}}createCourse(course){const rawSlug=(course.slug||course.code||course.name||"").toLowerCase().replace(/[^a-z0-9]/g,"-").replace(/-+/g,"-").replace(/^-|-$/g,"")||crypto.randomUUID().slice(0,8);const baseId="course-"+rawSlug;let id=baseId;let counter=1;while(this.data.courses.some(c=>c.id===id)){id=`${baseId}-${counter++}`}const newCourse={...course,id,slug:course.slug||id,display_order:Number(course.display_order)||this.data.courses.length+1,is_published:course.is_published!==false,created_at:new Date().toISOString()};this.data.courses.push(newCourse);this.save();return newCourse}updateCourse(id,updates){const index=this.data.courses.findIndex(c=>c.id===id);if(index===-1)return null;this.data.courses[index]={...this.data.courses[index],...updates};this.save();return this.data.courses[index]}deleteCourse(id){const index=this.data.courses.findIndex(c=>c.id===id);if(index===-1)return false;this.data.courses.splice(index,1);this.data.years=this.data.years.filter(y=>y.course_id!==id);this.data.subjects=this.data.subjects.filter(s=>s.course_id!==id);this.data.papers=this.data.papers.filter(p=>p.course_id!==id);this.save();return true}reorderCourses(orderedIds){orderedIds.forEach((id,index)=>{const course=this.data.courses.find(c=>c.id===id);if(course)course.display_order=index+1});this.save()}getYears(courseId,includeUnpublished=false){let list=[...this.data.years];if(courseId){list=list.filter(y=>y.course_id===courseId)}if(!includeUnpublished){list=list.filter(y=>y.is_published)}list.sort((a,b)=>a.display_order-b.display_order);return list.map(y=>{const course=this.data.courses.find(c=>c.id===y.course_id);const subjects=this.data.subjects.filter(s=>s.year_id===y.id&&(includeUnpublished||s.is_published));const papers=this.data.papers.filter(p=>p.year_id===y.id&&(includeUnpublished||p.is_published));return{...y,course_name:course?.name,course_code:course?.code,subjects_count:subjects.length,papers_count:papers.length}})}getYearById(id){const year=this.data.years.find(y=>y.id===id);if(!year)return void 0;const course=this.data.courses.find(c=>c.id===year.course_id);const subjects=this.data.subjects.filter(s=>s.year_id===year.id);const papers=this.data.papers.filter(p=>p.year_id===year.id);return{...year,course_name:course?.name,course_code:course?.code,subjects_count:subjects.length,papers_count:papers.length}}createYear(year){const id="yr-"+crypto.randomUUID().slice(0,8);const newYear={...year,id,year_number:Number(year.year_number)||1,slug:year.slug||`year-${year.year_number||1}`,display_order:Number(year.display_order)||this.data.years.filter(y=>y.course_id===year.course_id).length+1,is_published:year.is_published!==false,created_at:new Date().toISOString()};this.data.years.push(newYear);this.save();return newYear}updateYear(id,updates){const index=this.data.years.findIndex(y=>y.id===id);if(index===-1)return null;this.data.years[index]={...this.data.years[index],...updates};this.save();return this.data.years[index]}deleteYear(id){const index=this.data.years.findIndex(y=>y.id===id);if(index===-1)return false;this.data.years.splice(index,1);this.data.subjects=this.data.subjects.filter(s=>s.year_id!==id);this.data.papers=this.data.papers.filter(p=>p.year_id!==id);this.save();return true}reorderYears(orderedIds){orderedIds.forEach((id,index)=>{const year=this.data.years.find(y=>y.id===id);if(year)year.display_order=index+1});this.save()}getSubjects(params,includeUnpublished=false){let list=[...this.data.subjects];if(params?.courseId){list=list.filter(s=>s.course_id===params.courseId)}if(params?.yearId){list=list.filter(s=>s.year_id===params.yearId)}if(!includeUnpublished){list=list.filter(s=>s.is_published)}list.sort((a,b)=>a.display_order-b.display_order);return list.map(s=>{const course=this.data.courses.find(c=>c.id===s.course_id);const year=this.data.years.find(y=>y.id===s.year_id);const papers=this.data.papers.filter(p=>p.subject_id===s.id&&(includeUnpublished||p.is_published));return{...s,course_name:course?.name,course_code:course?.code,year_name:year?.name,papers_count:papers.length}})}getSubjectById(id){const s=this.data.subjects.find(item=>item.id===id);if(!s)return void 0;const course=this.data.courses.find(c=>c.id===s.course_id);const year=this.data.years.find(y=>y.id===s.year_id);const papers=this.data.papers.filter(p=>p.subject_id===s.id);return{...s,course_name:course?.name,course_code:course?.code,year_name:year?.name,papers_count:papers.length}}createSubject(subject){const id="sub-"+crypto.randomUUID().slice(0,8);const newSubject={...subject,id,slug:subject.slug||id,display_order:Number(subject.display_order)||this.data.subjects.filter(s=>s.year_id===subject.year_id).length+1,is_published:subject.is_published!==false,created_at:new Date().toISOString()};this.data.subjects.push(newSubject);this.save();return newSubject}updateSubject(id,updates){const index=this.data.subjects.findIndex(s=>s.id===id);if(index===-1)return null;this.data.subjects[index]={...this.data.subjects[index],...updates};this.save();return this.data.subjects[index]}deleteSubject(id){const index=this.data.subjects.findIndex(s=>s.id===id);if(index===-1)return false;this.data.subjects.splice(index,1);this.data.papers=this.data.papers.filter(p=>p.subject_id!==id);this.save();return true}reorderSubjects(orderedIds){orderedIds.forEach((id,index)=>{const subject=this.data.subjects.find(s=>s.id===id);if(subject)subject.display_order=index+1});this.save()}getQuestionPapers(params,includeUnpublished=false){let list=[...this.data.papers];if(params?.courseId){list=list.filter(p=>p.course_id===params.courseId)}if(params?.yearId){list=list.filter(p=>p.year_id===params.yearId)}if(params?.subjectId){list=list.filter(p=>p.subject_id===params.subjectId)}if(params?.examYear){list=list.filter(p=>p.exam_year===params.examYear)}if(!includeUnpublished){list=list.filter(p=>p.is_published)}list.sort((a,b)=>{const orderA=typeof a.display_order==="number"?a.display_order:999999;const orderB=typeof b.display_order==="number"?b.display_order:999999;if(orderA!==orderB)return orderA-orderB;return b.exam_year-a.exam_year||b.title.localeCompare(a.title)});return list.map(p=>{const course=this.data.courses.find(c=>c.id===p.course_id);const year=this.data.years.find(y=>y.id===p.year_id);const subject=this.data.subjects.find(s=>s.id===p.subject_id);return{...p,course_name:course?.name,course_code:course?.code,year_name:year?.name,subject_name:subject?.name,subject_code:subject?.code}})}getExamYears(params){let list=this.data.papers.filter(p=>p.is_published);if(params?.courseId){list=list.filter(p=>p.course_id===params.courseId)}if(params?.yearId){list=list.filter(p=>p.year_id===params.yearId)}const years=Array.from(new Set(list.map(p=>p.exam_year)));years.sort((a,b)=>b-a);if(years.length===0){const currentYear=new Date().getFullYear();return[currentYear,currentYear-1,currentYear-2]}return years}getPaperById(id){const p=this.data.papers.find(item=>item.id===id);if(!p)return void 0;const course=this.data.courses.find(c=>c.id===p.course_id);const year=this.data.years.find(y=>y.id===p.year_id);const subject=this.data.subjects.find(s=>s.id===p.subject_id);return{...p,course_name:course?.name,course_code:course?.code,year_name:year?.name,subject_name:subject?.name,subject_code:subject?.code}}createPaper(paper){let courseId=paper.course_id||"";let resolvedCourse=this.data.courses.find(c=>c.id===courseId||c.slug===courseId||c.code.toLowerCase()===(courseId||"").toLowerCase()||c.name.toLowerCase()===(courseId||"").toLowerCase());const courseInput=paper.course||(typeof paper.course_id==="string"&&!resolvedCourse?paper.course_id:"");if(!resolvedCourse&&courseInput){resolvedCourse=this.data.courses.find(c=>c.code.toLowerCase()===courseInput.toLowerCase()||c.name.toLowerCase()===courseInput.toLowerCase()||c.slug.toLowerCase()===courseInput.toLowerCase());if(!resolvedCourse){const code=courseInput.length<=10?courseInput:courseInput.split(" ").map(w=>w[0]).join("").toUpperCase();resolvedCourse=this.createCourse({name:courseInput,code:code||"DEG",slug:courseInput.toLowerCase().replace(/[^a-z0-9]/g,"-"),description:`${courseInput} Degree Program`,display_order:this.data.courses.length+1,is_published:true})}courseId=resolvedCourse.id}else if(resolvedCourse){courseId=resolvedCourse.id}else if(this.data.courses.length>0){courseId=this.data.courses[0].id;resolvedCourse=this.data.courses[0]}let yearId=paper.year_id||"";let resolvedYear=this.data.years.find(y=>y.id===yearId&&y.course_id===courseId);const yearInput=paper.year||(typeof paper.year_id==="string"&&!resolvedYear?paper.year_id:"")||"1st Year";const semesterInput=paper.semester||"";if(!resolvedYear&&courseId){resolvedYear=this.data.years.find(y=>y.course_id===courseId&&(y.name.toLowerCase().includes(yearInput.toLowerCase())||yearInput.toLowerCase().includes(y.name.toLowerCase())));if(!resolvedYear){const yearNumber=parseInt(yearInput.replace(/\D/g,""))||1;resolvedYear=this.createYear({course_id:courseId,name:yearInput,year_number:yearNumber,slug:yearInput.toLowerCase().replace(/[^a-z0-9]/g,"-"),display_order:this.data.years.filter(y=>y.course_id===courseId).length+1,is_published:true})}yearId=resolvedYear.id}else if(resolvedYear){yearId=resolvedYear.id}let subjectId=paper.subject_id||"";let resolvedSubject=this.data.subjects.find(s=>s.id===subjectId);const subjectInput=paper.subject||(typeof paper.subject_id==="string"&&!resolvedSubject?paper.subject_id:"");if(!resolvedSubject&&subjectInput&&courseId&&yearId){resolvedSubject=this.data.subjects.find(s=>s.course_id===courseId&&(s.name.toLowerCase()===subjectInput.toLowerCase()||s.code.toLowerCase()===subjectInput.toLowerCase()||s.name.toLowerCase().includes(subjectInput.toLowerCase())));if(!resolvedSubject){const generatedCode=paper.subject_code||paper.subjectCode||`${resolvedCourse?.code||"SUB"}-${Math.floor(100+Math.random()*900)}`;resolvedSubject=this.createSubject({course_id:courseId,year_id:yearId,name:subjectInput,code:generatedCode,slug:subjectInput.toLowerCase().replace(/[^a-z0-9]/g,"-"),description:`${subjectInput} for ${resolvedCourse?.name||"course"}`,display_order:this.data.subjects.filter(s=>s.year_id===yearId).length+1,is_published:true})}subjectId=resolvedSubject.id}else if(resolvedSubject){subjectId=resolvedSubject.id}const examYearNum=Number(paper.exam_year||paper.examYear)||new Date().getFullYear();const id="qp-"+crypto.randomUUID().slice(0,10);const paperStatus=paper.status==="Draft"||paper.is_published===false?"Draft":"Published";const isPublished=paperStatus==="Published";const newPaper={id,course_id:courseId,year_id:yearId,subject_id:subjectId,title:paper.title||`${resolvedSubject?.name||"Subject"} - ${examYearNum} Examination`,exam_year:examYearNum,exam_session:paper.exam_session||paper.exam_type||paper.examType||"University Exam",paper_code:paper.paper_code||paper.subject_code||paper.subjectCode||`QP-${String(examYearNum).slice(-2)}-${resolvedSubject?.code||"01"}`,total_marks:Number(paper.total_marks||paper.totalMarks)||75,duration:paper.duration||"3 Hours",file_url:paper.file_url||paper.pdfUrl||`/api/papers/${id}/file`,file_name:paper.file_name||`LBS_${(resolvedCourse?.code||"DEG").replace(/[^a-zA-Z0-9]/g,"")}_${(resolvedSubject?.name||"Paper").replace(/[^a-zA-Z0-9]/g,"_")}_${examYearNum}.pdf`,file_size:paper.file_size||"1.2 MB",is_published:isPublished,status:paperStatus,stream:paper.stream||"General",semester:semesterInput||paper.semester||"Annual Exam",exam_type:paper.exam_type||paper.examType||"University Exam",exam_date:paper.exam_date||paper.examDate||"",paper_type:paper.paper_type||paper.paperType||"Previous Year Paper",language:paper.language||"English",description:paper.description||"",tags:paper.tags||[],thumbnail_url:paper.thumbnail_url||paper.thumbnailUrl||"",featured:Boolean(paper.featured),free_download:paper.free_download!==false,view_count:0,download_count:0,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};this.data.papers.push(newPaper);this.save();return this.getPaperById(id)}updatePaper(id,updates){const index=this.data.papers.findIndex(p=>p.id===id);if(index===-1)return null;const existing=this.data.papers[index];const newStatus=updates.status||(updates.is_published!==void 0?updates.is_published?"Published":"Draft":existing.status||"Published");const isPublished=updates.is_published!==void 0?updates.is_published:newStatus==="Published";this.data.papers[index]={...existing,...updates,status:newStatus,is_published:isPublished,updated_at:new Date().toISOString()};this.save();return this.getPaperById(id)||null}bulkDeletePapers(ids){let deletedCount=0;ids.forEach(id=>{const success=this.deletePaper(id);if(success)deletedCount++});return deletedCount}bulkSetPaperStatus(ids,status){let updatedCount=0;const isPublished=status==="Published";this.data.papers.forEach(p=>{if(ids.includes(p.id)){p.status=status;p.is_published=isPublished;p.updated_at=new Date().toISOString();updatedCount++}});if(updatedCount>0){this.save()}return updatedCount}deletePaper(id){const index=this.data.papers.findIndex(p=>p.id===id);if(index===-1)return false;const paper=this.data.papers[index];if(paper.file_name&&fs.existsSync(path.join(PAPERS_UPLOAD_DIR,paper.file_name))){try{fs.unlinkSync(path.join(PAPERS_UPLOAD_DIR,paper.file_name))}catch(err){console.error("Error removing uploaded file:",err)}}this.data.papers.splice(index,1);this.save();return true}incrementPaperView(id){const paper=this.data.papers.find(p=>p.id===id);if(paper){paper.view_count=(paper.view_count||0)+1;this.save()}}incrementPaperDownload(id){const paper=this.data.papers.find(p=>p.id===id);if(paper){paper.download_count=(paper.download_count||0)+1;this.save()}}search(query,includeUnpublished=false){const q=(query||"").toLowerCase().trim();if(!q){return{courses:[],years:[],subjects:[],papers:[]}}const courses=this.getCourses(includeUnpublished).filter(c=>c.name.toLowerCase().includes(q)||c.code.toLowerCase().includes(q)||c.description.toLowerCase().includes(q));const years=this.getYears(void 0,includeUnpublished).filter(y=>y.name.toLowerCase().includes(q)||y.course_name&&y.course_name.toLowerCase().includes(q)||y.course_code&&y.course_code.toLowerCase().includes(q));const subjects=this.getSubjects(void 0,includeUnpublished).filter(s=>s.name.toLowerCase().includes(q)||s.code.toLowerCase().includes(q)||s.description.toLowerCase().includes(q)||s.course_name&&s.course_name.toLowerCase().includes(q)||s.year_name&&s.year_name.toLowerCase().includes(q));const papers=this.getQuestionPapers(void 0,includeUnpublished).filter(p=>p.title.toLowerCase().includes(q)||p.paper_code.toLowerCase().includes(q)||p.exam_session.toLowerCase().includes(q)||p.exam_year.toString().includes(q)||p.subject_name&&p.subject_name.toLowerCase().includes(q)||p.course_name&&p.course_name.toLowerCase().includes(q)||p.year_name&&p.year_name.toLowerCase().includes(q));return{courses,years,subjects,papers}}}const db=new Database;export{PAPERS_UPLOAD_DIR,db};
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+
+const DATA_DIR = path.join(process.cwd(), 'data');
+const DB_FILE = path.join(DATA_DIR, 'database.json');
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+const PAPERS_UPLOAD_DIR = path.join(UPLOADS_DIR, 'papers');
+const LOGOS_UPLOAD_DIR = path.join(UPLOADS_DIR, 'logos');
+
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(PAPERS_UPLOAD_DIR)) fs.mkdirSync(PAPERS_UPLOAD_DIR, { recursive: true });
+if (!fs.existsSync(LOGOS_UPLOAD_DIR)) fs.mkdirSync(LOGOS_UPLOAD_DIR, { recursive: true });
+
+function hashPassword(password: string, salt: string): string {
+  return crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
+}
+
+export function createInitialData() {
+  const adminSalt = crypto.randomBytes(16).toString('hex');
+  const adminHash = hashPassword(process.env.ADMIN_PASSWORD || 'ratnesh@200.lbs8!', adminSalt);
+
+  // Default Universities
+  const universities = [
+    {
+      id: 'univ-lu',
+      name: 'Lucknow University',
+      code: 'LU',
+      logo_url: '/assets/logos/logo.jpg',
+      description: 'Established 1921. Premier State University in Lucknow, Uttar Pradesh.',
+      is_active: true,
+      display_order: 1,
+      created_at: new Date('2024-01-01').toISOString(),
+    },
+    {
+      id: 'univ-mpu',
+      name: 'Maa Patishwari University',
+      code: 'MPU',
+      logo_url: '/assets/logos/logo.jpg',
+      description: 'State University in Balrampur / Gonda Region, Uttar Pradesh.',
+      is_active: true,
+      display_order: 2,
+      created_at: new Date('2024-01-01').toISOString(),
+    },
+  ];
+
+  // Default Courses
+  const courses = [
+    {
+      id: 'course-ba-lu',
+      university_id: 'univ-lu',
+      name: 'Bachelor of Arts',
+      code: 'B.A.',
+      slug: 'ba-lu',
+      description: 'Undergraduate humanities program.',
+      display_order: 1,
+      is_published: true,
+      created_at: new Date('2024-01-10').toISOString(),
+    },
+    {
+      id: 'course-bsc-lu',
+      university_id: 'univ-lu',
+      name: 'Bachelor of Science',
+      code: 'B.Sc.',
+      slug: 'bsc-lu',
+      description: 'Undergraduate science degree.',
+      display_order: 2,
+      is_published: true,
+      created_at: new Date('2024-01-10').toISOString(),
+    },
+    {
+      id: 'course-bcom-lu',
+      university_id: 'univ-lu',
+      name: 'Bachelor of Commerce',
+      code: 'B.Com.',
+      slug: 'bcom-lu',
+      description: 'Undergraduate commerce degree.',
+      display_order: 3,
+      is_published: true,
+      created_at: new Date('2024-01-10').toISOString(),
+    },
+    {
+      id: 'course-bca-lu',
+      university_id: 'univ-lu',
+      name: 'Bachelor of Computer Applications',
+      code: 'BCA',
+      slug: 'bca-lu',
+      description: 'Computer applications degree.',
+      display_order: 4,
+      is_published: true,
+      created_at: new Date('2024-01-10').toISOString(),
+    },
+    {
+      id: 'course-ba-mpu',
+      university_id: 'univ-mpu',
+      name: 'Bachelor of Arts',
+      code: 'B.A.',
+      slug: 'ba-mpu',
+      description: 'Maa Patishwari University B.A Degree.',
+      display_order: 1,
+      is_published: true,
+      created_at: new Date('2024-01-10').toISOString(),
+    },
+    {
+      id: 'course-bsc-mpu',
+      university_id: 'univ-mpu',
+      name: 'Bachelor of Science',
+      code: 'B.Sc.',
+      slug: 'bsc-mpu',
+      description: 'Maa Patishwari University B.Sc Degree.',
+      display_order: 2,
+      is_published: true,
+      created_at: new Date('2024-01-10').toISOString(),
+    },
+  ];
+
+  // Default Years
+  const years = [
+    // LU - B.Sc Years
+    { id: 'yr-bsc-1', university_id: 'univ-lu', course_id: 'course-bsc-lu', name: '1st Year', year_number: 1, slug: '1st-year', display_order: 1, is_published: true, created_at: new Date().toISOString() },
+    { id: 'yr-bsc-2', university_id: 'univ-lu', course_id: 'course-bsc-lu', name: '2nd Year', year_number: 2, slug: '2nd-year', display_order: 2, is_published: true, created_at: new Date().toISOString() },
+    { id: 'yr-bsc-3', university_id: 'univ-lu', course_id: 'course-bsc-lu', name: '3rd Year', year_number: 3, slug: '3rd-year', display_order: 3, is_published: true, created_at: new Date().toISOString() },
+    
+    // LU - B.A Years
+    { id: 'yr-ba-1', university_id: 'univ-lu', course_id: 'course-ba-lu', name: '1st Year', year_number: 1, slug: '1st-year', display_order: 1, is_published: true, created_at: new Date().toISOString() },
+    { id: 'yr-ba-2', university_id: 'univ-lu', course_id: 'course-ba-lu', name: '2nd Year', year_number: 2, slug: '2nd-year', display_order: 2, is_published: true, created_at: new Date().toISOString() },
+    { id: 'yr-ba-3', university_id: 'univ-lu', course_id: 'course-ba-lu', name: '3rd Year', year_number: 3, slug: '3rd-year', display_order: 3, is_published: true, created_at: new Date().toISOString() },
+
+    // MPU - B.Sc Years
+    { id: 'yr-bsc-mpu-1', university_id: 'univ-mpu', course_id: 'course-bsc-mpu', name: '1st Year', year_number: 1, slug: '1st-year', display_order: 1, is_published: true, created_at: new Date().toISOString() },
+    { id: 'yr-bsc-mpu-2', university_id: 'univ-mpu', course_id: 'course-bsc-mpu', name: '2nd Year', year_number: 2, slug: '2nd-year', display_order: 2, is_published: true, created_at: new Date().toISOString() },
+  ];
+
+  // Default Semesters
+  const semesters = [
+    // LU B.Sc 1st Year
+    { id: 'sem-bsc-1', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-1', name: '1st Semester', semester_number: 1, display_order: 1, is_published: true, created_at: new Date().toISOString() },
+    { id: 'sem-bsc-2', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-1', name: '2nd Semester', semester_number: 2, display_order: 2, is_published: true, created_at: new Date().toISOString() },
+    
+    // LU B.Sc 2nd Year
+    { id: 'sem-bsc-3', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-2', name: '3rd Semester', semester_number: 3, display_order: 1, is_published: true, created_at: new Date().toISOString() },
+    { id: 'sem-bsc-4', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-2', name: '4th Semester', semester_number: 4, display_order: 2, is_published: true, created_at: new Date().toISOString() },
+
+    // LU B.Sc 3rd Year
+    { id: 'sem-bsc-5', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-3', name: '5th Semester', semester_number: 5, display_order: 1, is_published: true, created_at: new Date().toISOString() },
+    { id: 'sem-bsc-6', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-3', name: '6th Semester', semester_number: 6, display_order: 2, is_published: true, created_at: new Date().toISOString() },
+
+    // LU B.A 1st Year
+    { id: 'sem-ba-1', university_id: 'univ-lu', course_id: 'course-ba-lu', year_id: 'yr-ba-1', name: '1st Semester', semester_number: 1, display_order: 1, is_published: true, created_at: new Date().toISOString() },
+    { id: 'sem-ba-2', university_id: 'univ-lu', course_id: 'course-ba-lu', year_id: 'yr-ba-1', name: '2nd Semester', semester_number: 2, display_order: 2, is_published: true, created_at: new Date().toISOString() },
+
+    // MPU B.Sc 1st Year
+    { id: 'sem-mpu-bsc-1', university_id: 'univ-mpu', course_id: 'course-bsc-mpu', year_id: 'yr-bsc-mpu-1', name: '1st Semester', semester_number: 1, display_order: 1, is_published: true, created_at: new Date().toISOString() },
+    { id: 'sem-mpu-bsc-2', university_id: 'univ-mpu', course_id: 'course-bsc-mpu', year_id: 'yr-bsc-mpu-1', name: '2nd Semester', semester_number: 2, display_order: 2, is_published: true, created_at: new Date().toISOString() },
+  ];
+
+  // Default Subjects
+  const subjects = [
+    // LU B.Sc 1st Sem
+    { id: 'sub-math-1', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-1', semester_id: 'sem-bsc-1', name: 'Mathematics I: Differential Calculus', code: 'MATH-101', slug: 'calculus', description: 'Calculus and analytical geometry.', display_order: 1, is_published: true, created_at: new Date().toISOString() },
+    { id: 'sub-phy-1', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-1', semester_id: 'sem-bsc-1', name: 'Physics I: Mechanics', code: 'PHYS-101', slug: 'mechanics', description: 'Mechanics and wave motion.', display_order: 2, is_published: true, created_at: new Date().toISOString() },
+    { id: 'sub-chem-1', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-1', semester_id: 'sem-bsc-1', name: 'Chemistry I: Fundamentals', code: 'CHEM-101', slug: 'chemistry', description: 'Inorganic and Physical Chemistry.', display_order: 3, is_published: true, created_at: new Date().toISOString() },
+    
+    // LU B.A 1st Sem
+    { id: 'sub-eng-1', university_id: 'univ-lu', course_id: 'course-ba-lu', year_id: 'yr-ba-1', semester_id: 'sem-ba-1', name: 'English Literature: Prose & Drama', code: 'ENG-101', slug: 'english-lit', description: 'Prose and Classical Drama.', display_order: 1, is_published: true, created_at: new Date().toISOString() },
+    { id: 'sub-hin-1', university_id: 'univ-lu', course_id: 'course-ba-lu', year_id: 'yr-ba-1', semester_id: 'sem-ba-1', name: 'Hindi Sahitya: Kavya', code: 'HIN-101', slug: 'hindi-lit', description: 'Modern and Medieval Poetry.', display_order: 2, is_published: true, created_at: new Date().toISOString() },
+
+    // MPU B.Sc 1st Sem
+    { id: 'sub-mpu-math-1', university_id: 'univ-mpu', course_id: 'course-bsc-mpu', year_id: 'yr-bsc-mpu-1', semester_id: 'sem-mpu-bsc-1', name: 'Mathematics: Differential Equations', code: 'MATH-MPU-101', slug: 'diff-eq', description: 'Algebra & Differential equations.', display_order: 1, is_published: true, created_at: new Date().toISOString() },
+  ];
+
+  // Default Question Papers
+  const papers = [
+    {
+      id: 'qp-math-2024',
+      university_id: 'univ-lu',
+      course_id: 'course-bsc-lu',
+      year_id: 'yr-bsc-1',
+      semester_id: 'sem-bsc-1',
+      paper_year: 2024,
+      exam_year: 2024,
+      subject_id: 'sub-math-1',
+      title: 'Mathematics I: Differential Calculus - 2024 Examination Paper',
+      exam_session: 'Semester Examination',
+      paper_code: 'LU-BSC-M1-2024',
+      total_marks: 75,
+      duration: '3 Hours',
+      file_name: 'LU_BSc_Maths_Sem1_2024.pdf',
+      file_url: '/api/papers/qp-math-2024/file',
+      file_size: '1.2 MB',
+      is_published: true,
+      view_count: 310,
+      download_count: 185,
+      created_at: new Date('2024-05-15').toISOString(),
+    },
+    {
+      id: 'qp-math-2025',
+      university_id: 'univ-lu',
+      course_id: 'course-bsc-lu',
+      year_id: 'yr-bsc-1',
+      semester_id: 'sem-bsc-1',
+      paper_year: 2025,
+      exam_year: 2025,
+      subject_id: 'sub-math-1',
+      title: 'Mathematics I: Differential Calculus - 2025 Examination Paper',
+      exam_session: 'Semester Examination',
+      paper_code: 'LU-BSC-M1-2025',
+      total_marks: 75,
+      duration: '3 Hours',
+      file_name: 'LU_BSc_Maths_Sem1_2025.pdf',
+      file_url: '/api/papers/qp-math-2025/file',
+      file_size: '1.4 MB',
+      is_published: true,
+      view_count: 420,
+      download_count: 290,
+      created_at: new Date('2025-05-18').toISOString(),
+    },
+    {
+      id: 'qp-phy-2024',
+      university_id: 'univ-lu',
+      course_id: 'course-bsc-lu',
+      year_id: 'yr-bsc-1',
+      semester_id: 'sem-bsc-1',
+      paper_year: 2024,
+      exam_year: 2024,
+      subject_id: 'sub-phy-1',
+      title: 'Physics I: Mechanics - 2024 Examination Paper',
+      exam_session: 'Semester Examination',
+      paper_code: 'LU-BSC-P1-2024',
+      total_marks: 75,
+      duration: '3 Hours',
+      file_name: 'LU_BSc_Physics_Sem1_2024.pdf',
+      file_url: '/api/papers/qp-phy-2024/file',
+      file_size: '1.1 MB',
+      is_published: true,
+      view_count: 210,
+      download_count: 140,
+      created_at: new Date('2024-05-20').toISOString(),
+    },
+    {
+      id: 'qp-eng-2024',
+      university_id: 'univ-lu',
+      course_id: 'course-ba-lu',
+      year_id: 'yr-ba-1',
+      semester_id: 'sem-ba-1',
+      paper_year: 2024,
+      exam_year: 2024,
+      subject_id: 'sub-eng-1',
+      title: 'English Literature: Prose & Drama - 2024 Examination Paper',
+      exam_session: 'Semester Examination',
+      paper_code: 'LU-BA-ENG1-2024',
+      total_marks: 100,
+      duration: '3 Hours',
+      file_name: 'LU_BA_English_Sem1_2024.pdf',
+      file_url: '/api/papers/qp-eng-2024/file',
+      file_size: '950 KB',
+      is_published: true,
+      view_count: 180,
+      download_count: 110,
+      created_at: new Date('2024-05-22').toISOString(),
+    },
+  ];
+
+  const settings = {
+    site_name: 'Semester (PYQs)',
+    tagline: 'Semester Examination Question Paper Archives (PYQs)',
+    college_address: 'Academic Examination Center & Digital Repository',
+    contact_email: 'examination@semesterpyqs.edu',
+    contact_phone: '+91 (0522) 238-9001',
+    logo_url: '/assets/logos/logo.jpg',
+    favicon_url: '/assets/icons/favicon.jpg',
+    hero_title: 'University Question Paper Portal',
+    hero_subtitle: 'Select your university to browse courses, years, semesters, paper years, and subjects to download authentic past examination papers.',
+    notice_ticker: '📢 2024 & 2025 Semester Examination Question Papers uploaded for all affiliated Universities.',
+    about_text: 'Semester (PYQs) is an open academic repository offering instant access to previous year question papers across top state universities.',
+    seo_title: 'Semester (PYQs) - University Question Papers',
+    seo_description: 'Download authentic semester examination question papers for Lucknow University, Maa Patishwari University and affiliated colleges.',
+    ad_banner_header: false,
+    ad_banner_sidebar: false,
+    ad_banner_paper: false,
+  };
+
+  return {
+    universities,
+    courses,
+    years,
+    semesters,
+    subjects,
+    papers,
+    settings,
+    admin: {
+      id: 'owner-admin-1',
+      email: 'Ramishkji@gmail.com',
+      password_hash: adminHash,
+      salt: adminSalt,
+      last_login: undefined,
+    },
+    sessions: [],
+  };
+}
+
+export class Database {
+  private data: any;
+  public lastModified: number = Date.now();
+
+  constructor() {
+    if (fs.existsSync(DB_FILE)) {
+      try {
+        const raw = fs.readFileSync(DB_FILE, 'utf-8');
+        this.data = JSON.parse(raw);
+        this.sanitizeData();
+      } catch (err) {
+        console.error('Error reading database file, creating fresh store:', err);
+        this.data = createInitialData();
+        this.save();
+      }
+    } else {
+      this.data = createInitialData();
+      this.save();
+    }
+  }
+
+  private sanitizeData() {
+    if (!this.data) return;
+    let changed = false;
+
+    // Ensure array keys exist
+    if (!Array.isArray(this.data.universities)) {
+      this.data.universities = createInitialData().universities;
+      changed = true;
+    }
+    if (!Array.isArray(this.data.courses)) {
+      this.data.courses = [];
+      changed = true;
+    }
+    if (!Array.isArray(this.data.years)) {
+      this.data.years = [];
+      changed = true;
+    }
+    if (!Array.isArray(this.data.semesters)) {
+      this.data.semesters = [];
+      changed = true;
+    }
+    if (!Array.isArray(this.data.subjects)) {
+      this.data.subjects = [];
+      changed = true;
+    }
+    if (!Array.isArray(this.data.papers)) {
+      this.data.papers = [];
+      changed = true;
+    }
+
+    // Ensure courses have university_id
+    this.data.courses.forEach((c: any) => {
+      if (!c.university_id) {
+        c.university_id = 'univ-lu';
+        changed = true;
+      }
+    });
+
+    // Ensure years have university_id
+    this.data.years.forEach((y: any) => {
+      if (!y.university_id) {
+        const parentCourse = this.data.courses.find((c: any) => c.id === y.course_id);
+        y.university_id = parentCourse?.university_id || 'univ-lu';
+        changed = true;
+      }
+    });
+
+    // Ensure semesters exist for years
+    if (this.data.semesters.length === 0 && this.data.years.length > 0) {
+      this.data.semesters = createInitialData().semesters;
+      changed = true;
+    }
+
+    if (changed) {
+      this.save();
+    }
+  }
+
+  public save() {
+    this.lastModified = Date.now();
+    try {
+      const tempPath = `${DB_FILE}.tmp`;
+      fs.writeFileSync(tempPath, JSON.stringify(this.data, null, 2), 'utf-8');
+      fs.renameSync(tempPath, DB_FILE);
+    } catch (err) {
+      console.error('Failed to write database file:', err);
+    }
+  }
+
+  // ==================== SETTINGS & ADMIN ====================
+  public getSettings() {
+    return { ...this.data.settings };
+  }
+
+  public updateSettings(updates: any) {
+    this.data.settings = { ...this.data.settings, ...updates };
+    this.save();
+    return this.getSettings();
+  }
+
+  public verifyAdminPassword(password: string) {
+    const computedHash = hashPassword(password, this.data.admin.salt);
+    return { success: computedHash === this.data.admin.password_hash };
+  }
+
+  public createAdminSession(token: string) {
+    const expires_at = Date.now() + 7 * 24 * 60 * 60 * 1000;
+    this.data.sessions = this.data.sessions.filter((s: any) => s.expires_at > Date.now());
+    this.data.sessions.push({ token, expires_at });
+    this.data.admin.last_login = new Date().toISOString();
+    this.save();
+  }
+
+  public validateSession(token: string) {
+    if (!token) return false;
+    const session = this.data.sessions.find((s: any) => s.token === token && s.expires_at > Date.now());
+    return !!session;
+  }
+
+  public invalidateSession(token: string) {
+    this.data.sessions = this.data.sessions.filter((s: any) => s.token !== token);
+    this.save();
+  }
+
+  public setAdminPassword(newPassword: string) {
+    if (newPassword && newPassword.length >= 8) {
+      const newSalt = crypto.randomBytes(16).toString('hex');
+      this.data.admin.salt = newSalt;
+      this.data.admin.password_hash = hashPassword(newPassword, newSalt);
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  public getDashboardStats() {
+    const total_downloads = this.data.papers.reduce((sum: number, p: any) => sum + (p.download_count || 0), 0);
+    const total_views = this.data.papers.reduce((sum: number, p: any) => sum + (p.view_count || 0), 0);
+    return {
+      total_universities: this.data.universities.length,
+      total_courses: this.data.courses.length,
+      total_years: this.data.years.length,
+      total_semesters: this.data.semesters.length,
+      total_subjects: this.data.subjects.length,
+      total_papers: this.data.papers.length,
+      total_downloads,
+      total_views,
+    };
+  }
+
+  // ==================== UNIVERSITIES ====================
+  public getUniversities(includeInactive = false) {
+    let list = [...this.data.universities];
+    if (!includeInactive) {
+      list = list.filter((u: any) => u.is_active !== false);
+    }
+    list.sort((a, b) => a.display_order - b.display_order);
+
+    return list.map((u: any) => {
+      const uCourses = this.data.courses.filter((c: any) => c.university_id === u.id);
+      const uPapers = this.data.papers.filter((p: any) => p.university_id === u.id);
+      return {
+        ...u,
+        courses_count: uCourses.length,
+        papers_count: uPapers.length,
+      };
+    });
+  }
+
+  public getUniversityById(id: string) {
+    const u = this.data.universities.find((item: any) => item.id === id);
+    if (!u) return undefined;
+    const uCourses = this.data.courses.filter((c: any) => c.university_id === u.id);
+    const uPapers = this.data.papers.filter((p: any) => p.university_id === u.id);
+    return {
+      ...u,
+      courses_count: uCourses.length,
+      papers_count: uPapers.length,
+    };
+  }
+
+  public createUniversity(univ: any) {
+    const id = 'univ-' + crypto.randomUUID().slice(0, 8);
+    const newUniv = {
+      id,
+      name: univ.name,
+      code: univ.code || univ.name.split(' ').map((w: string) => w[0]).join('').toUpperCase(),
+      logo_url: univ.logo_url || '/assets/logos/logo.jpg',
+      description: univ.description || '',
+      is_active: univ.is_active !== false,
+      display_order: Number(univ.display_order) || this.data.universities.length + 1,
+      created_at: new Date().toISOString(),
+    };
+    this.data.universities.push(newUniv);
+    this.save();
+    return this.getUniversityById(id);
+  }
+
+  public updateUniversity(id: string, updates: any) {
+    const index = this.data.universities.findIndex((u: any) => u.id === id);
+    if (index === -1) return null;
+    this.data.universities[index] = { ...this.data.universities[index], ...updates };
+    this.save();
+    return this.getUniversityById(id);
+  }
+
+  public deleteUniversity(id: string) {
+    const index = this.data.universities.findIndex((u: any) => u.id === id);
+    if (index === -1) return false;
+    this.data.universities.splice(index, 1);
+    
+    // Cascade deletion
+    this.data.courses = this.data.courses.filter((c: any) => c.university_id !== id);
+    this.data.years = this.data.years.filter((y: any) => y.university_id !== id);
+    this.data.semesters = this.data.semesters.filter((s: any) => s.university_id !== id);
+    this.data.subjects = this.data.subjects.filter((s: any) => s.university_id !== id);
+    this.data.papers = this.data.papers.filter((p: any) => p.university_id !== id);
+
+    this.save();
+    return true;
+  }
+
+  // ==================== COURSES ====================
+  public getCourses(universityId?: string, includeUnpublished = false) {
+    let list = [...this.data.courses];
+    if (universityId) {
+      list = list.filter((c: any) => c.university_id === universityId);
+    }
+    if (!includeUnpublished) {
+      list = list.filter((c: any) => c.is_published !== false);
+    }
+    list.sort((a, b) => a.display_order - b.display_order);
+
+    return list.map((c: any) => {
+      const u = this.data.universities.find((item: any) => item.id === c.university_id);
+      const cYears = this.data.years.filter((y: any) => y.course_id === c.id);
+      const cPapers = this.data.papers.filter((p: any) => p.course_id === c.id);
+      return {
+        ...c,
+        university_name: u?.name,
+        years_count: cYears.length,
+        papers_count: cPapers.length,
+      };
+    });
+  }
+
+  public getCourseById(id: string) {
+    const c = this.data.courses.find((item: any) => item.id === id);
+    if (!c) return undefined;
+    const u = this.data.universities.find((item: any) => item.id === c.university_id);
+    const cYears = this.data.years.filter((y: any) => y.course_id === c.id);
+    const cPapers = this.data.papers.filter((p: any) => p.course_id === c.id);
+    return {
+      ...c,
+      university_name: u?.name,
+      years_count: cYears.length,
+      papers_count: cPapers.length,
+    };
+  }
+
+  public createCourse(course: any) {
+    const id = 'course-' + crypto.randomUUID().slice(0, 8);
+    const newCourse = {
+      id,
+      university_id: course.university_id,
+      name: course.name,
+      code: course.code || course.name,
+      slug: course.slug || id,
+      description: course.description || '',
+      display_order: Number(course.display_order) || this.data.courses.length + 1,
+      is_published: course.is_published !== false,
+      created_at: new Date().toISOString(),
+    };
+    this.data.courses.push(newCourse);
+    this.save();
+    return this.getCourseById(id);
+  }
+
+  public updateCourse(id: string, updates: any) {
+    const index = this.data.courses.findIndex((c: any) => c.id === id);
+    if (index === -1) return null;
+    this.data.courses[index] = { ...this.data.courses[index], ...updates };
+    this.save();
+    return this.getCourseById(id);
+  }
+
+  public deleteCourse(id: string) {
+    const index = this.data.courses.findIndex((c: any) => c.id === id);
+    if (index === -1) return false;
+    this.data.courses.splice(index, 1);
+    
+    // Cascade
+    this.data.years = this.data.years.filter((y: any) => y.course_id !== id);
+    this.data.semesters = this.data.semesters.filter((s: any) => s.course_id !== id);
+    this.data.subjects = this.data.subjects.filter((s: any) => s.course_id !== id);
+    this.data.papers = this.data.papers.filter((p: any) => p.course_id !== id);
+
+    this.save();
+    return true;
+  }
+
+  // ==================== YEARS ====================
+  public getYears(params?: { universityId?: string; courseId?: string }, includeUnpublished = false) {
+    let list = [...this.data.years];
+    if (params?.universityId) {
+      list = list.filter((y: any) => y.university_id === params.universityId);
+    }
+    if (params?.courseId) {
+      list = list.filter((y: any) => y.course_id === params.courseId);
+    }
+    if (!includeUnpublished) {
+      list = list.filter((y: any) => y.is_published !== false);
+    }
+    list.sort((a, b) => a.display_order - b.display_order);
+
+    return list.map((y: any) => {
+      const u = this.data.universities.find((item: any) => item.id === y.university_id);
+      const c = this.data.courses.find((item: any) => item.id === y.course_id);
+      const s = this.data.semesters.filter((sem: any) => sem.year_id === y.id);
+      const p = this.data.papers.filter((paper: any) => paper.year_id === y.id);
+      return {
+        ...y,
+        university_name: u?.name,
+        course_name: c?.name,
+        course_code: c?.code,
+        semesters_count: s.length,
+        papers_count: p.length,
+      };
+    });
+  }
+
+  public getYearById(id: string) {
+    const y = this.data.years.find((item: any) => item.id === id);
+    if (!y) return undefined;
+    const u = this.data.universities.find((item: any) => item.id === y.university_id);
+    const c = this.data.courses.find((item: any) => item.id === y.course_id);
+    const s = this.data.semesters.filter((sem: any) => sem.year_id === y.id);
+    const p = this.data.papers.filter((paper: any) => paper.year_id === y.id);
+    return {
+      ...y,
+      university_name: u?.name,
+      course_name: c?.name,
+      course_code: c?.code,
+      semesters_count: s.length,
+      papers_count: p.length,
+    };
+  }
+
+  public createYear(year: any) {
+    const id = 'yr-' + crypto.randomUUID().slice(0, 8);
+    const parentCourse = this.data.courses.find((c: any) => c.id === year.course_id);
+    const newYear = {
+      id,
+      university_id: year.university_id || parentCourse?.university_id,
+      course_id: year.course_id,
+      name: year.name,
+      year_number: Number(year.year_number) || 1,
+      slug: year.slug || `year-${year.year_number || 1}`,
+      display_order: Number(year.display_order) || this.data.years.filter((y: any) => y.course_id === year.course_id).length + 1,
+      is_published: year.is_published !== false,
+      created_at: new Date().toISOString(),
+    };
+    this.data.years.push(newYear);
+    this.save();
+    return this.getYearById(id);
+  }
+
+  public updateYear(id: string, updates: any) {
+    const index = this.data.years.findIndex((y: any) => y.id === id);
+    if (index === -1) return null;
+    this.data.years[index] = { ...this.data.years[index], ...updates };
+    this.save();
+    return this.getYearById(id);
+  }
+
+  public deleteYear(id: string) {
+    const index = this.data.years.findIndex((y: any) => y.id === id);
+    if (index === -1) return false;
+    this.data.years.splice(index, 1);
+
+    this.data.semesters = this.data.semesters.filter((s: any) => s.year_id !== id);
+    this.data.subjects = this.data.subjects.filter((s: any) => s.year_id !== id);
+    this.data.papers = this.data.papers.filter((p: any) => p.year_id !== id);
+
+    this.save();
+    return true;
+  }
+
+  // ==================== SEMESTERS ====================
+  public getSemesters(params?: { universityId?: string; courseId?: string; yearId?: string }, includeUnpublished = false) {
+    let list = [...this.data.semesters];
+    if (params?.universityId) {
+      list = list.filter((s: any) => s.university_id === params.universityId);
+    }
+    if (params?.courseId) {
+      list = list.filter((s: any) => s.course_id === params.courseId);
+    }
+    if (params?.yearId) {
+      list = list.filter((s: any) => s.year_id === params.yearId);
+    }
+    if (!includeUnpublished) {
+      list = list.filter((s: any) => s.is_published !== false);
+    }
+    list.sort((a, b) => a.display_order - b.display_order);
+
+    return list.map((s: any) => {
+      const u = this.data.universities.find((item: any) => item.id === s.university_id);
+      const c = this.data.courses.find((item: any) => item.id === s.course_id);
+      const y = this.data.years.find((item: any) => item.id === s.year_id);
+      const subs = this.data.subjects.filter((sub: any) => sub.semester_id === s.id);
+      const p = this.data.papers.filter((paper: any) => paper.semester_id === s.id);
+      return {
+        ...s,
+        university_name: u?.name,
+        course_name: c?.name,
+        year_name: y?.name,
+        subjects_count: subs.length,
+        papers_count: p.length,
+      };
+    });
+  }
+
+  public getSemesterById(id: string) {
+    const s = this.data.semesters.find((item: any) => item.id === id);
+    if (!s) return undefined;
+    const u = this.data.universities.find((item: any) => item.id === s.university_id);
+    const c = this.data.courses.find((item: any) => item.id === s.course_id);
+    const y = this.data.years.find((item: any) => item.id === s.year_id);
+    const subs = this.data.subjects.filter((sub: any) => sub.semester_id === s.id);
+    const p = this.data.papers.filter((paper: any) => paper.semester_id === s.id);
+    return {
+      ...s,
+      university_name: u?.name,
+      course_name: c?.name,
+      year_name: y?.name,
+      subjects_count: subs.length,
+      papers_count: p.length,
+    };
+  }
+
+  public createSemester(sem: any) {
+    const id = 'sem-' + crypto.randomUUID().slice(0, 8);
+    const parentYear = this.data.years.find((y: any) => y.id === sem.year_id);
+    const newSem = {
+      id,
+      university_id: sem.university_id || parentYear?.university_id,
+      course_id: sem.course_id || parentYear?.course_id,
+      year_id: sem.year_id,
+      name: sem.name,
+      semester_number: Number(sem.semester_number) || 1,
+      display_order: Number(sem.display_order) || this.data.semesters.filter((s: any) => s.year_id === sem.year_id).length + 1,
+      is_published: sem.is_published !== false,
+      created_at: new Date().toISOString(),
+    };
+    this.data.semesters.push(newSem);
+    this.save();
+    return this.getSemesterById(id);
+  }
+
+  public updateSemester(id: string, updates: any) {
+    const index = this.data.semesters.findIndex((s: any) => s.id === id);
+    if (index === -1) return null;
+    this.data.semesters[index] = { ...this.data.semesters[index], ...updates };
+    this.save();
+    return this.getSemesterById(id);
+  }
+
+  public deleteSemester(id: string) {
+    const index = this.data.semesters.findIndex((s: any) => s.id === id);
+    if (index === -1) return false;
+    this.data.semesters.splice(index, 1);
+
+    this.data.subjects = this.data.subjects.filter((sub: any) => sub.semester_id !== id);
+    this.data.papers = this.data.papers.filter((p: any) => p.semester_id !== id);
+
+    this.save();
+    return true;
+  }
+
+  // ==================== PAPER YEARS ====================
+  // Shows ONLY the paper years that actually have uploaded papers
+  public getPaperYears(params: { universityId?: string; courseId?: string; yearId?: string; semesterId?: string }) {
+    let list = this.data.papers.filter((p: any) => p.is_published !== false);
+
+    if (params.universityId) list = list.filter((p: any) => p.university_id === params.universityId);
+    if (params.courseId) list = list.filter((p: any) => p.course_id === params.courseId);
+    if (params.yearId) list = list.filter((p: any) => p.year_id === params.yearId);
+    if (params.semesterId) list = list.filter((p: any) => p.semester_id === params.semesterId);
+
+    const yearSet = new Set<number>();
+    list.forEach((p: any) => {
+      const year = Number(p.paper_year || p.exam_year);
+      if (year && !isNaN(year)) yearSet.add(year);
+    });
+
+    return Array.from(yearSet).sort((a, b) => b - a);
+  }
+
+  // ==================== SUBJECTS ====================
+  public getSubjects(
+    params?: { universityId?: string; courseId?: string; yearId?: string; semesterId?: string; paperYear?: number },
+    includeUnpublished = false
+  ) {
+    let list = [...this.data.subjects];
+
+    if (params?.universityId) list = list.filter((s: any) => s.university_id === params.universityId);
+    if (params?.courseId) list = list.filter((s: any) => s.course_id === params.courseId);
+    if (params?.yearId) list = list.filter((s: any) => s.year_id === params.yearId);
+    if (params?.semesterId) list = list.filter((s: any) => s.semester_id === params.semesterId);
+
+    if (!includeUnpublished) list = list.filter((s: any) => s.is_published !== false);
+
+    // Filter by paperYear if requested (subjects having papers for that year)
+    if (params?.paperYear) {
+      const paperSubjectIds = new Set(
+        this.data.papers
+          .filter((p: any) => (p.paper_year === params.paperYear || p.exam_year === params.paperYear) && p.is_published !== false)
+          .map((p: any) => p.subject_id)
+      );
+      list = list.filter((s: any) => paperSubjectIds.has(s.id));
+    }
+
+    list.sort((a, b) => a.display_order - b.display_order);
+
+    return list.map((s: any) => {
+      const u = this.data.universities.find((item: any) => item.id === s.university_id);
+      const c = this.data.courses.find((item: any) => item.id === s.course_id);
+      const y = this.data.years.find((item: any) => item.id === s.year_id);
+      const sem = this.data.semesters.find((item: any) => item.id === s.semester_id);
+      const p = this.data.papers.filter((paper: any) => paper.subject_id === s.id);
+      return {
+        ...s,
+        university_name: u?.name,
+        course_name: c?.name,
+        year_name: y?.name,
+        semester_name: sem?.name,
+        papers_count: p.length,
+      };
+    });
+  }
+
+  public getSubjectById(id: string) {
+    const s = this.data.subjects.find((item: any) => item.id === id);
+    if (!s) return undefined;
+    const u = this.data.universities.find((item: any) => item.id === s.university_id);
+    const c = this.data.courses.find((item: any) => item.id === s.course_id);
+    const y = this.data.years.find((item: any) => item.id === s.year_id);
+    const sem = this.data.semesters.find((item: any) => item.id === s.semester_id);
+    const p = this.data.papers.filter((paper: any) => paper.subject_id === s.id);
+    return {
+      ...s,
+      university_name: u?.name,
+      course_name: c?.name,
+      year_name: y?.name,
+      semester_name: sem?.name,
+      papers_count: p.length,
+    };
+  }
+
+  public createSubject(subject: any) {
+    const id = 'sub-' + crypto.randomUUID().slice(0, 8);
+    const parentSem = this.data.semesters.find((s: any) => s.id === subject.semester_id);
+    const newSubject = {
+      id,
+      university_id: subject.university_id || parentSem?.university_id,
+      course_id: subject.course_id || parentSem?.course_id,
+      year_id: subject.year_id || parentSem?.year_id,
+      semester_id: subject.semester_id,
+      name: subject.name,
+      code: subject.code || subject.name,
+      slug: subject.slug || id,
+      description: subject.description || '',
+      display_order: Number(subject.display_order) || this.data.subjects.filter((s: any) => s.semester_id === subject.semester_id).length + 1,
+      is_published: subject.is_published !== false,
+      created_at: new Date().toISOString(),
+    };
+    this.data.subjects.push(newSubject);
+    this.save();
+    return this.getSubjectById(id);
+  }
+
+  public updateSubject(id: string, updates: any) {
+    const index = this.data.subjects.findIndex((s: any) => s.id === id);
+    if (index === -1) return null;
+    this.data.subjects[index] = { ...this.data.subjects[index], ...updates };
+    this.save();
+    return this.getSubjectById(id);
+  }
+
+  public deleteSubject(id: string) {
+    const index = this.data.subjects.findIndex((s: any) => s.id === id);
+    if (index === -1) return false;
+    this.data.subjects.splice(index, 1);
+
+    this.data.papers = this.data.papers.filter((p: any) => p.subject_id !== id);
+
+    this.save();
+    return true;
+  }
+
+  // ==================== QUESTION PAPERS ====================
+  public getQuestionPapers(
+    params?: {
+      universityId?: string;
+      courseId?: string;
+      yearId?: string;
+      semesterId?: string;
+      paperYear?: number;
+      subjectId?: string;
+    },
+    includeUnpublished = false
+  ) {
+    let list = [...this.data.papers];
+
+    if (params?.universityId) list = list.filter((p: any) => p.university_id === params.universityId);
+    if (params?.courseId) list = list.filter((p: any) => p.course_id === params.courseId);
+    if (params?.yearId) list = list.filter((p: any) => p.year_id === params.yearId);
+    if (params?.semesterId) list = list.filter((p: any) => p.semester_id === params.semesterId);
+    if (params?.subjectId) list = list.filter((p: any) => p.subject_id === params.subjectId);
+    if (params?.paperYear) {
+      list = list.filter((p: any) => p.paper_year === params.paperYear || p.exam_year === params.paperYear);
+    }
+
+    if (!includeUnpublished) list = list.filter((p: any) => p.is_published !== false);
+
+    list.sort((a, b) => (b.paper_year || b.exam_year) - (a.paper_year || a.exam_year));
+
+    return list.map((p: any) => {
+      const u = this.data.universities.find((item: any) => item.id === p.university_id);
+      const c = this.data.courses.find((item: any) => item.id === p.course_id);
+      const y = this.data.years.find((item: any) => item.id === p.year_id);
+      const sem = this.data.semesters.find((item: any) => item.id === p.semester_id);
+      const sub = this.data.subjects.find((item: any) => item.id === p.subject_id);
+      return {
+        ...p,
+        university_name: u?.name,
+        course_name: c?.name,
+        course_code: c?.code,
+        year_name: y?.name,
+        semester_name: sem?.name,
+        subject_name: sub?.name,
+        subject_code: sub?.code,
+        paper_year: p.paper_year || p.exam_year,
+      };
+    });
+  }
+
+  public getPaperById(id: string) {
+    const p = this.data.papers.find((item: any) => item.id === id);
+    if (!p) return undefined;
+    const u = this.data.universities.find((item: any) => item.id === p.university_id);
+    const c = this.data.courses.find((item: any) => item.id === p.course_id);
+    const y = this.data.years.find((item: any) => item.id === p.year_id);
+    const sem = this.data.semesters.find((item: any) => item.id === p.semester_id);
+    const sub = this.data.subjects.find((item: any) => item.id === p.subject_id);
+    return {
+      ...p,
+      university_name: u?.name,
+      course_name: c?.name,
+      course_code: c?.code,
+      year_name: y?.name,
+      semester_name: sem?.name,
+      subject_name: sub?.name,
+      subject_code: sub?.code,
+      paper_year: p.paper_year || p.exam_year,
+    };
+  }
+
+  public createPaper(paper: any) {
+    const id = 'qp-' + crypto.randomUUID().slice(0, 10);
+    const examYearNum = Number(paper.paper_year || paper.exam_year) || new Date().getFullYear();
+
+    const parentSub = this.data.subjects.find((s: any) => s.id === paper.subject_id);
+    const parentSem = this.data.semesters.find((s: any) => s.id === (paper.semester_id || parentSub?.semester_id));
+
+    const university_id = paper.university_id || parentSub?.university_id || parentSem?.university_id || 'univ-lu';
+    const course_id = paper.course_id || parentSub?.course_id || parentSem?.course_id;
+    const year_id = paper.year_id || parentSub?.year_id || parentSem?.year_id;
+    const semester_id = paper.semester_id || parentSub?.semester_id;
+
+    const newPaper = {
+      id,
+      university_id,
+      course_id,
+      year_id,
+      semester_id,
+      subject_id: paper.subject_id,
+      title: paper.title,
+      paper_year: examYearNum,
+      exam_year: examYearNum,
+      exam_session: paper.exam_session || 'Semester Examination',
+      paper_code: paper.paper_code || `QP-${examYearNum}`,
+      total_marks: Number(paper.total_marks) || 75,
+      duration: paper.duration || '3 Hours',
+      file_name: paper.file_name || `Paper_${examYearNum}.pdf`,
+      file_url: paper.file_url || `/api/papers/${id}/file`,
+      file_size: paper.file_size || '1.2 MB',
+      is_published: paper.is_published !== false,
+      status: paper.is_published !== false ? 'Published' : 'Draft',
+      view_count: 0,
+      download_count: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    this.data.papers.push(newPaper);
+    this.save();
+    return this.getPaperById(id);
+  }
+
+  public updatePaper(id: string, updates: any) {
+    const index = this.data.papers.findIndex((p: any) => p.id === id);
+    if (index === -1) return null;
+    this.data.papers[index] = {
+      ...this.data.papers[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+    this.save();
+    return this.getPaperById(id);
+  }
+
+  public deletePaper(id: string) {
+    const index = this.data.papers.findIndex((p: any) => p.id === id);
+    if (index === -1) return false;
+    const paper = this.data.papers[index];
+    if (paper.file_name && fs.existsSync(path.join(PAPERS_UPLOAD_DIR, paper.file_name))) {
+      try {
+        fs.unlinkSync(path.join(PAPERS_UPLOAD_DIR, paper.file_name));
+      } catch (err) {
+        console.error('Error removing uploaded file:', err);
+      }
+    }
+    this.data.papers.splice(index, 1);
+    this.save();
+    return true;
+  }
+
+  public incrementPaperView(id: string) {
+    const paper = this.data.papers.find((p: any) => p.id === id);
+    if (paper) {
+      paper.view_count = (paper.view_count || 0) + 1;
+      this.save();
+    }
+  }
+
+  public incrementPaperDownload(id: string) {
+    const paper = this.data.papers.find((p: any) => p.id === id);
+    if (paper) {
+      paper.download_count = (paper.download_count || 0) + 1;
+      this.save();
+    }
+  }
+
+  public search(query: string, includeUnpublished = false) {
+    const rawQ = (query || '').trim();
+    if (!rawQ) {
+      return { universities: [], courses: [], subjects: [], papers: [] };
+    }
+
+    // Helper: normalize string (lowercase, remove punctuation, collapse whitespace)
+    const normalize = (str: string) => {
+      return (str || '')
+        .toLowerCase()
+        .replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+
+    // Helper: compact string (alphanumerics only e.g. "B.Sc." -> "bsc", "b sc" -> "bsc")
+    const compact = (str: string) => {
+      return (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    };
+
+    const qNormalized = normalize(rawQ);
+    const qCompact = compact(rawQ);
+    const qTokens = qNormalized.split(' ').filter(Boolean);
+
+    // Matching engine: returns true if target matches query either compactly or token-by-token
+    const matchesTarget = (fields: (string | number | undefined | null)[]) => {
+      const combined = fields.filter((f) => f !== undefined && f !== null).map((f) => String(f)).join(' ');
+      const combinedNorm = normalize(combined);
+      const combinedCompact = compact(combined);
+
+      // 1. Direct compact match for acronyms and short codes (e.g. "bsc", "ba", "mpu", "lu")
+      if (qCompact.length >= 2 && combinedCompact.includes(qCompact)) {
+        return true;
+      }
+
+      // 2. All tokens match in normalized or compact target
+      if (
+        qTokens.length > 0 &&
+        qTokens.every((tok) => {
+          const tokCompact = compact(tok);
+          return (
+            combinedNorm.includes(tok) ||
+            (tokCompact.length >= 2 && combinedCompact.includes(tokCompact))
+          );
+        })
+      ) {
+        return true;
+      }
+
+      return false;
+    };
+
+    const universities = this.getUniversities(includeUnpublished).filter((u: any) =>
+      matchesTarget([u.name, u.code, u.short_name, u.slug])
+    );
+
+    const courses = this.getCourses(undefined, includeUnpublished).filter((c: any) =>
+      matchesTarget([c.name, c.code, c.slug, c.university_name])
+    );
+
+    const subjects = this.getSubjects(undefined, includeUnpublished).filter((s: any) =>
+      matchesTarget([
+        s.name,
+        s.code,
+        s.slug,
+        s.course_name,
+        s.university_name,
+        s.year_name,
+        s.semester_name,
+      ])
+    );
+
+    const papers = this.getQuestionPapers(undefined, includeUnpublished).filter((p: any) =>
+      matchesTarget([
+        p.title,
+        p.paper_code,
+        p.paper_year,
+        p.exam_year,
+        p.subject_name,
+        p.subject_code,
+        p.course_name,
+        p.course_code,
+        p.university_name,
+        p.year_name,
+        p.semester_name,
+      ])
+    );
+
+    return { universities, courses, subjects, papers };
+  }
+}
+
+export const db = new Database();
+export { PAPERS_UPLOAD_DIR, LOGOS_UPLOAD_DIR };

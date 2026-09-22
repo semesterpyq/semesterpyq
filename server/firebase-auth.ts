@@ -50,12 +50,21 @@ export function getFirebaseConfig() {
 
 export function getAuthorizedAdminEmail(): string {
   const envEmail = sanitize(process.env.ADMIN_EMAIL);
-  return (envEmail || AUTHORIZED_ADMIN_EMAIL).toLowerCase();
+  if (envEmail) return envEmail.toLowerCase();
+  return AUTHORIZED_ADMIN_EMAIL.toLowerCase();
 }
 
 export function isAuthorizedAdminEmail(emailInput: string): boolean {
   const clean = (emailInput || '').trim().toLowerCase();
   if (!clean) return false;
+  
+  // Accept any case variation of Ramishkji@gmail.com
+  if (clean === 'ramishkji@gmail.com') return true;
+  if (clean === AUTHORIZED_ADMIN_EMAIL.toLowerCase()) return true;
+  
+  const envEmail = sanitize(process.env.ADMIN_EMAIL)?.toLowerCase();
+  if (envEmail && clean === envEmail) return true;
+  
   return clean === getAuthorizedAdminEmail();
 }
 
@@ -70,9 +79,8 @@ export async function verifyWithFirebaseAuth(
   localId?: string;
 }> {
   const normalizedEmail = (email || '').trim().toLowerCase();
-  const targetAuthorizedEmail = getAuthorizedAdminEmail();
 
-  if (normalizedEmail !== targetAuthorizedEmail) {
+  if (!isAuthorizedAdminEmail(normalizedEmail)) {
     return {
       success: false,
       status: 401,

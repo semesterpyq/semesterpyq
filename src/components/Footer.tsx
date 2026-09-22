@@ -4,6 +4,7 @@ import { InfoModalTab } from './InfoModal';
 
 interface FooterProps {
   settings: SiteSettings;
+  onNavigateHome?: () => void;
   onOpenInfoTab: (tab: InfoModalTab) => void;
 }
 

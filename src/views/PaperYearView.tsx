@@ -1,26 +1,25 @@
 import React from 'react';
-import { ArrowLeft, BookOpen, ArrowRight, Building2 } from 'lucide-react';
-import { Course, Semester, Subject, University, Year } from '../types';
+import { ArrowLeft, CalendarDays, FileText, ArrowRight, Building2 } from 'lucide-react';
+import { Course, Semester, University, Year } from '../types';
 
-interface SubjectViewProps {
+interface PaperYearViewProps {
   university: University | null;
   course: Course | null;
   year: Year | null;
   semester: Semester | null;
-  paperYear: number | null;
-  subjects: Subject[];
+  paperYears: number[];
   onBack: () => void;
-  onSelectSubject: (subjectId: string) => void;
+  onSelectPaperYear: (paperYear: number) => void;
 }
 
-const SUBJECT_THEMES = [
+const PAPER_YEAR_THEMES = [
   {
-    cardBg: 'bg-gradient-to-br from-violet-50/90 via-purple-50/30 to-white hover:from-violet-100/90 hover:via-purple-100/40 hover:to-white',
-    cardBorder: 'border-violet-200/90 hover:border-violet-300',
-    iconBg: 'bg-violet-600 text-white shadow-xs',
-    titleColor: 'text-violet-950',
-    arrowBg: 'bg-violet-600 group-hover:bg-violet-700 text-white',
-    hoverShadow: 'hover:shadow-violet-500/15',
+    cardBg: 'bg-gradient-to-br from-emerald-50/90 via-teal-50/30 to-white hover:from-emerald-100/90 hover:via-teal-100/40 hover:to-white',
+    cardBorder: 'border-emerald-200/90 hover:border-emerald-300',
+    iconBg: 'bg-emerald-600 text-white shadow-xs',
+    titleColor: 'text-emerald-950',
+    arrowBg: 'bg-emerald-600 group-hover:bg-emerald-700 text-white',
+    hoverShadow: 'hover:shadow-emerald-500/15',
   },
   {
     cardBg: 'bg-gradient-to-br from-blue-50/90 via-indigo-50/30 to-white hover:from-blue-100/90 hover:via-indigo-100/40 hover:to-white',
@@ -31,20 +30,12 @@ const SUBJECT_THEMES = [
     hoverShadow: 'hover:shadow-blue-500/15',
   },
   {
-    cardBg: 'bg-gradient-to-br from-emerald-50/90 via-teal-50/30 to-white hover:from-emerald-100/90 hover:via-teal-100/40 hover:to-white',
-    cardBorder: 'border-emerald-200/90 hover:border-emerald-300',
-    iconBg: 'bg-emerald-600 text-white shadow-xs',
-    titleColor: 'text-emerald-950',
-    arrowBg: 'bg-emerald-600 group-hover:bg-emerald-700 text-white',
-    hoverShadow: 'hover:shadow-emerald-500/15',
-  },
-  {
-    cardBg: 'bg-gradient-to-br from-rose-50/90 via-pink-50/30 to-white hover:from-rose-100/90 hover:via-pink-100/40 hover:to-white',
-    cardBorder: 'border-rose-200/90 hover:border-rose-300',
-    iconBg: 'bg-rose-600 text-white shadow-xs',
-    titleColor: 'text-rose-950',
-    arrowBg: 'bg-rose-600 group-hover:bg-rose-700 text-white',
-    hoverShadow: 'hover:shadow-rose-500/15',
+    cardBg: 'bg-gradient-to-br from-purple-50/90 via-violet-50/30 to-white hover:from-purple-100/90 hover:via-violet-100/40 hover:to-white',
+    cardBorder: 'border-purple-200/90 hover:border-purple-300',
+    iconBg: 'bg-purple-600 text-white shadow-xs',
+    titleColor: 'text-purple-950',
+    arrowBg: 'bg-purple-600 group-hover:bg-purple-700 text-white',
+    hoverShadow: 'hover:shadow-purple-500/15',
   },
   {
     cardBg: 'bg-gradient-to-br from-amber-50/90 via-orange-50/30 to-white hover:from-amber-100/90 hover:via-orange-100/40 hover:to-white',
@@ -54,25 +45,16 @@ const SUBJECT_THEMES = [
     arrowBg: 'bg-amber-600 group-hover:bg-amber-700 text-white',
     hoverShadow: 'hover:shadow-amber-500/15',
   },
-  {
-    cardBg: 'bg-gradient-to-br from-teal-50/90 via-cyan-50/30 to-white hover:from-teal-100/90 hover:via-cyan-100/40 hover:to-white',
-    cardBorder: 'border-teal-200/90 hover:border-teal-300',
-    iconBg: 'bg-teal-600 text-white shadow-xs',
-    titleColor: 'text-teal-950',
-    arrowBg: 'bg-teal-600 group-hover:bg-teal-700 text-white',
-    hoverShadow: 'hover:shadow-teal-500/15',
-  },
 ];
 
-export const SubjectView: React.FC<SubjectViewProps> = ({
+export const PaperYearView: React.FC<PaperYearViewProps> = ({
   university,
   course,
   year,
   semester,
-  paperYear,
-  subjects,
+  paperYears,
   onBack,
-  onSelectSubject,
+  onSelectPaperYear,
 }) => {
   return (
     <div className="max-w-5xl mx-auto space-y-5 py-4 sm:py-6 px-2.5 sm:px-6">
@@ -104,42 +86,42 @@ export const SubjectView: React.FC<SubjectViewProps> = ({
         )}
       </div>
 
-      {/* Header */}
+      {/* Title */}
       <div>
         <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-slate-900 font-serif tracking-tight">
-          Select Subject
+          Select Examination Paper Year
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-          Available subjects for {semester?.name || 'semester'} ({paperYear || 'All Years'})
+          Showing years with uploaded question papers for {semester?.name || 'this semester'}
         </p>
       </div>
 
-      {/* Subjects Grid (3 cols mobile / 4 cols desktop) */}
-      {subjects.length === 0 ? (
+      {/* Paper Years List (3 cols mobile / 4 cols desktop) */}
+      {paperYears.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300 p-6">
-          <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <h3 className="text-base font-semibold text-slate-700">No Subjects Found</h3>
-          <p className="text-xs text-slate-500 mt-1">
-            No subjects are registered for this semester and paper year.
+          <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-base font-semibold text-slate-700">No Question Papers Uploaded Yet</h3>
+          <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+            The Admin has not uploaded any question papers for {semester?.name} yet. As soon as papers are uploaded in the Admin panel, the paper years will appear here automatically.
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 sm:gap-3.5 md:gap-4">
-          {subjects.map((sub, idx) => {
-            const theme = SUBJECT_THEMES[idx % SUBJECT_THEMES.length];
+          {paperYears.map((pYear, idx) => {
+            const theme = PAPER_YEAR_THEMES[idx % PAPER_YEAR_THEMES.length];
             return (
               <button
-                key={sub.id}
-                onClick={() => onSelectSubject(sub.id)}
+                key={pYear}
+                onClick={() => onSelectPaperYear(pYear)}
                 className={`group relative flex flex-col justify-between p-2.5 sm:p-3.5 ${theme.cardBg} rounded-xl sm:rounded-2xl border ${theme.cardBorder} shadow-2xs hover:shadow-md ${theme.hoverShadow} transition-all duration-200 text-left cursor-pointer hover:-translate-y-0.5 min-h-[82px] sm:min-h-[94px]`}
               >
                 <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl ${theme.iconBg} flex items-center justify-center shrink-0`}>
-                  <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+                  <CalendarDays className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                 </div>
 
                 <div className="flex items-center justify-between gap-1.5 w-full mt-2 sm:mt-2.5">
                   <h3 className={`font-serif font-bold text-xs sm:text-sm ${theme.titleColor} tracking-tight line-clamp-1`}>
-                    {sub.name}
+                    {pYear}
                   </h3>
                   <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full ${theme.arrowBg} flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-110 transition-all`}>
                     <ArrowRight className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" />

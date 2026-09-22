@@ -1,1 +1,68 @@
 @import "tailwindcss";
+
+@keyframes hueShift {
+  0% {
+    filter: hue-rotate(0deg);
+  }
+  50% {
+    filter: hue-rotate(180deg);
+  }
+  100% {
+    filter: hue-rotate(360deg);
+  }
+}
+
+@keyframes comeAndGo {
+  0%, 100% {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes enterLeftExitRight {
+  0% {
+    opacity: 0;
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  35% {
+    opacity: 1;
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+  36% {
+    opacity: 1;
+    transform: scaleX(1);
+    transform-origin: right;
+  }
+  75% {
+    opacity: 0;
+    transform: scaleX(0);
+    transform-origin: right;
+  }
+  100% {
+    opacity: 0;
+    transform: scaleX(0);
+    transform-origin: right;
+  }
+}
+
+.animate-hue-shift {
+  animation: hueShift 6s linear infinite;
+}
+
+.animate-sweep-1 {
+  animation: enterLeftExitRight 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite, hueShift 6s linear infinite;
+}
+
+.animate-sweep-2 {
+  animation: enterLeftExitRight 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite 0.25s, hueShift 6s linear infinite;
+}
+
+.animate-sweep-3 {
+  animation: enterLeftExitRight 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite 0.5s, hueShift 6s linear infinite;
+}

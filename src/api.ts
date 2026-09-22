@@ -1,24 +1,14 @@
 import {
+  University,
   Course,
   Year,
+  Semester,
   Subject,
   QuestionPaper,
   SiteSettings,
-  AdminUser,
   DashboardStats,
-  SearchResult,
-  AdminLoginResponse,
-  AdminLoginStep1Response,
-  AdminVerifyOtpResponse,
-  AdminResendOtpResponse,
+  AdminUser,
 } from './types';
-import {
-  initialCourses,
-  initialYears,
-  initialSubjects,
-  initialPapers,
-  initialSettings,
-} from './initialData';
 
 const ADMIN_TOKEN_KEY = 'lbs_admin_token';
 
@@ -36,9 +26,12 @@ export function clearAdminToken() {
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
   };
+
+  if (!(options.body instanceof FormData) && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   const token = getAdminToken();
   if (token && !headers['Authorization']) {
@@ -61,390 +54,426 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     throw new Error(errorMsg);
   }
 
-  return res.json();
+  const result = await res.json();
+
+  const method = (options.method || 'GET').toUpperCase();
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+    try {
+      const now = Date.now().toString();
+      localStorage.setItem('lbs_sync_timestamp', now);
+      window.dispatchEvent(new CustomEvent('lbs_sync_updated', { detail: { timestamp: now } }));
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('lbs_realtime_sync');
+        bc.postMessage({ timestamp: now });
+        bc.close();
+      }
+    } catch {
+      // Ignore broadcast/storage exceptions
+    }
+  }
+
+  return result;
 }
 
 export const api = {
-  // Public with seamless static fallback for GitHub Pages
+  getSyncStatus: async (): Promise<{ lastModified: number; papersCount: number }> => {
+    return await request<{ lastModified: number; papersCount: number }>('/api/sync-status');
+  },
+
+  // Settings
   getSettings: async (): Promise<SiteSettings> => {
     try {
       return await request<SiteSettings>('/api/settings');
     } catch {
-      return initialSettings;
-    }
-  },
-
-  getStats: async (): Promise<DashboardStats> => {
-    try {
-      return await request<DashboardStats>('/api/stats');
-    } catch {
       return {
-        total_courses: initialCourses.length,
-        total_years: initialYears.length,
-        total_subjects: initialSubjects.length,
-        total_papers: initialPapers.length,
-        total_downloads: 1250,
-        total_views: 3420,
+        site_name: 'Semester (PYQs)',
+        tagline: 'Semester Examination Question Paper Archives (PYQs)',
+        college_address: 'Academic Examination Center & Digital Repository',
+        contact_email: 'examination@semesterpyqs.edu',
+        contact_phone: '+91 (0522) 238-9001',
+        logo_url: '/assets/logos/logo.jpg',
+        favicon_url: '/assets/icons/favicon.jpg',
+        hero_title: 'University Question Paper Portal',
+        hero_subtitle: 'Select your university to browse courses, years, semesters, paper years, and subjects.',
+        notice_ticker: '📢 2024 & 2025 Question Papers uploaded for all affiliated Universities.',
+        about_text: 'Semester (PYQs) is an open academic repository offering instant access to previous year question papers.',
+        seo_title: 'Semester (PYQs) - University Question Papers',
+        seo_description: 'Download authentic semester examination question papers.',
+        ad_banner_header: false,
+        ad_banner_paper: false,
       };
     }
   },
 
-  getCourses: async (): Promise<Course[]> => {
-    try {
-      const res = await request<Course[]>('/api/courses');
-      return res && res.length > 0 ? res : initialCourses;
-    } catch {
-      return initialCourses;
-    }
+  // 1. UNIVERSITIES
+  getUniversities: async (): Promise<University[]> => {
+    return await request<University[]>('/api/universities');
   },
 
-  getCourse: async (id: string): Promise<Course> => {
-    try {
-      return await request<Course>(`/api/courses/${encodeURIComponent(id)}`);
-    } catch {
-      const match = initialCourses.find((c) => c.id === id || c.slug === id);
-      if (match) return match;
-      throw new Error('Course not found');
-    }
+  getUniversityById: async (id: string): Promise<University> => {
+    return await request<University>(`/api/universities/${id}`);
   },
 
-  getYears: async (courseId?: string): Promise<Year[]> => {
-    try {
-      const res = await request<Year[]>(`/api/years${courseId ? `?courseId=${encodeURIComponent(courseId)}` : ''}`);
-      return res && res.length > 0 ? res : initialYears.filter((y) => !courseId || y.course_id === courseId);
-    } catch {
-      return initialYears.filter((y) => !courseId || y.course_id === courseId);
-    }
+  adminGetUniversities: async (): Promise<University[]> => {
+    return await request<University[]>('/api/admin/universities');
   },
 
-  getYear: async (id: string): Promise<Year> => {
-    try {
-      return await request<Year>(`/api/years/${encodeURIComponent(id)}`);
-    } catch {
-      const match = initialYears.find((y) => y.id === id || y.slug === id);
-      if (match) return match;
-      throw new Error('Year not found');
-    }
-  },
-
-  getExamYears: async (courseId?: string, yearId?: string): Promise<number[]> => {
-    try {
-      const params = new URLSearchParams();
-      if (courseId) params.append('courseId', courseId);
-      if (yearId) params.append('yearId', yearId);
-      const query = params.toString();
-      const res = await request<number[]>(`/api/exam-years${query ? `?${query}` : ''}`);
-      if (res && res.length > 0) return res;
-    } catch {
-      // fallback below
-    }
-
-    const filtered = initialPapers.filter(
-      (p) => (!courseId || p.course_id === courseId) && (!yearId || p.year_id === yearId)
-    );
-    const years = Array.from(new Set(filtered.map((p) => p.exam_year))).sort((a, b) => b - a);
-    return years.length > 0 ? years : [2026, 2025, 2024, 2023, 2022, 2021];
-  },
-
-  getSubjects: async (
-    courseIdOrOpts?: string | { course_id?: string; courseId?: string; year_id?: string; yearId?: string },
-    yearId?: string
-  ): Promise<Subject[]> => {
-    let cId: string | undefined;
-    let yId: string | undefined;
-
-    if (typeof courseIdOrOpts === 'object' && courseIdOrOpts !== null) {
-      cId = courseIdOrOpts.course_id || courseIdOrOpts.courseId;
-      yId = courseIdOrOpts.year_id || courseIdOrOpts.yearId;
-    } else {
-      cId = courseIdOrOpts;
-      yId = yearId;
-    }
-
-    try {
-      const params = new URLSearchParams();
-      if (cId) params.append('courseId', cId);
-      if (yId) params.append('yearId', yId);
-      const query = params.toString();
-      const res = await request<Subject[]>(`/api/subjects${query ? `?${query}` : ''}`);
-      if (res && res.length > 0) return res;
-    } catch {
-      // fallback
-    }
-
-    return initialSubjects.filter(
-      (s) => (!cId || s.course_id === cId) && (!yId || s.year_id === yId)
-    );
-  },
-
-  getSubject: async (id: string): Promise<Subject> => {
-    try {
-      return await request<Subject>(`/api/subjects/${encodeURIComponent(id)}`);
-    } catch {
-      const match = initialSubjects.find((s) => s.id === id || s.slug === id);
-      if (match) return match;
-      throw new Error('Subject not found');
-    }
-  },
-
-  getPapers: async (
-    courseIdOrOpts?:
-      | string
-      | { course_id?: string; courseId?: string; year_id?: string; yearId?: string; subject_id?: string; subjectId?: string; exam_year?: number; examYear?: number },
-    yearId?: string,
-    subjectId?: string,
-    examYear?: number
-  ): Promise<QuestionPaper[]> => {
-    let cId: string | undefined;
-    let yId: string | undefined;
-    let sId: string | undefined;
-    let eYr: number | undefined;
-
-    if (typeof courseIdOrOpts === 'object' && courseIdOrOpts !== null) {
-      cId = courseIdOrOpts.course_id || courseIdOrOpts.courseId;
-      yId = courseIdOrOpts.year_id || courseIdOrOpts.yearId;
-      sId = courseIdOrOpts.subject_id || courseIdOrOpts.subjectId;
-      eYr = courseIdOrOpts.exam_year || courseIdOrOpts.examYear;
-    } else {
-      cId = courseIdOrOpts;
-      yId = yearId;
-      sId = subjectId;
-      eYr = examYear;
-    }
-
-    try {
-      const params = new URLSearchParams();
-      if (cId) params.append('courseId', cId);
-      if (yId) params.append('yearId', yId);
-      if (sId) params.append('subjectId', sId);
-      if (eYr) params.append('examYear', eYr.toString());
-      const query = params.toString();
-      const res = await request<QuestionPaper[]>(`/api/papers${query ? `?${query}` : ''}`);
-      if (res && res.length > 0) return res;
-    } catch {
-      // fallback
-    }
-
-    return initialPapers
-      .filter((p) => {
-        if (p.is_published === false) return false;
-        if (cId && p.course_id !== cId) return false;
-        if (yId && p.year_id !== yId) return false;
-        if (sId && p.subject_id !== sId) return false;
-        if (eYr && p.exam_year !== eYr) return false;
-        return true;
-      })
-      .sort((a, b) => (a.display_order ?? 9999) - (b.display_order ?? 9999) || b.exam_year - a.exam_year);
-  },
-
-  getPaper: async (id: string): Promise<QuestionPaper> => {
-    try {
-      return await request<QuestionPaper>(`/api/papers/${encodeURIComponent(id)}`);
-    } catch {
-      const match = initialPapers.find((p) => p.id === id);
-      if (match) return match;
-      throw new Error('Paper not found');
-    }
-  },
-
-  search: async (q: string): Promise<SearchResult> => {
-    try {
-      return await request<SearchResult>(`/api/search?q=${encodeURIComponent(q)}`);
-    } catch {
-      const query = (q || '').trim().toLowerCase();
-      if (!query) return { courses: [], years: [], subjects: [], papers: [] };
-      return {
-        courses: initialCourses.filter((c) => c.name.toLowerCase().includes(query) || c.code.toLowerCase().includes(query)),
-        years: initialYears.filter((y) => y.name.toLowerCase().includes(query)),
-        subjects: initialSubjects.filter((s) => s.name.toLowerCase().includes(query) || s.code.toLowerCase().includes(query)),
-        papers: initialPapers.filter((p) => p.is_published && (p.title.toLowerCase().includes(query) || (p.paper_code && p.paper_code.toLowerCase().includes(query)))),
-      };
-    }
-  },
-
-  // Admin Auth (2-Step Verification)
-  adminLogin: (credentials: { email: string; password: string }) =>
-    request<AdminLoginStep1Response>('/api/admin/login', {
-      method: 'POST',
-      body: JSON.stringify(credentials),
-    }),
-  adminLoginStep1: (credentials: { email: string; password: string }) =>
-    request<AdminLoginStep1Response>('/api/admin/login-step1', {
-      method: 'POST',
-      body: JSON.stringify(credentials),
-    }),
-  adminVerifyOtp: (data: { challengeId: string; otp: string }) =>
-    request<AdminVerifyOtpResponse>('/api/admin/verify-otp', {
+  adminCreateUniversity: async (data: Partial<University>): Promise<University> => {
+    return await request<University>('/api/admin/universities', {
       method: 'POST',
       body: JSON.stringify(data),
-    }),
-  adminResendOtp: (data: { challengeId: string }) =>
-    request<AdminResendOtpResponse>('/api/admin/resend-otp', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-  adminMe: () => request<{ admin: AdminUser }>('/api/admin/me'),
-  adminGetProfile: async (): Promise<AdminUser> => {
-    const res = await request<{ admin: AdminUser }>('/api/admin/me');
-    return res.admin;
-  },
-  adminLogout: () => request<{ success: boolean }>('/api/admin/logout', { method: 'POST' }),
-  adminUpdateCredentials: (data: { currentPassword: string; newEmail?: string; newPassword?: string }) =>
-    request<{ success: boolean; message: string }>('/api/admin/credentials', {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
-  adminChangeCredentials: async (data: { email?: string; currentPassword: string; newPassword?: string }) => {
-    const res = await request<{ success: boolean; message: string }>('/api/admin/credentials', {
-      method: 'PUT',
-      body: JSON.stringify({
-        currentPassword: data.currentPassword,
-        newEmail: data.email || 'Ramishkji@gmail.com',
-        newPassword: data.newPassword,
-      }),
     });
-    return {
-      success: res.success,
-      admin: { id: 'owner-admin-1', email: 'Ramishkji@gmail.com' } as AdminUser,
-    };
   },
-  adminGetStats: () => request<DashboardStats>('/api/admin/stats'),
 
-  // Admin Settings
-  adminGetSettings: () => request<SiteSettings>('/api/admin/settings'),
-  adminUpdateSettings: (settings: Partial<SiteSettings>) =>
-    request<SiteSettings>('/api/admin/settings', {
+  adminUpdateUniversity: async (id: string, data: Partial<University>): Promise<University> => {
+    return await request<University>(`/api/admin/universities/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(settings),
-    }),
-
-  // Admin Courses
-  adminGetCourses: () => request<Course[]>('/api/admin/courses'),
-  adminCreateCourse: (course: Partial<Course>) =>
-    request<Course>('/api/admin/courses', {
-      method: 'POST',
-      body: JSON.stringify(course),
-    }),
-  adminUpdateCourse: (id: string, course: Partial<Course>) =>
-    request<Course>(`/api/admin/courses/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      body: JSON.stringify(course),
-    }),
-  adminDeleteCourse: (id: string) =>
-    request<{ success: boolean }>(`/api/admin/courses/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    }),
-  adminReorderCourses: (orderedIds: string[]) =>
-    request<{ success: boolean }>('/api/admin/courses/reorder', {
-      method: 'POST',
-      body: JSON.stringify({ orderedIds }),
-    }),
-
-  // Admin Years
-  adminGetYears: (courseId?: string) =>
-    request<Year[]>(`/api/admin/years${courseId ? `?courseId=${encodeURIComponent(courseId)}` : ''}`),
-  adminCreateYear: (year: Partial<Year>) =>
-    request<Year>('/api/admin/years', {
-      method: 'POST',
-      body: JSON.stringify(year),
-    }),
-  adminUpdateYear: (id: string, year: Partial<Year>) =>
-    request<Year>(`/api/admin/years/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      body: JSON.stringify(year),
-    }),
-  adminDeleteYear: (id: string) =>
-    request<{ success: boolean }>(`/api/admin/years/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    }),
-  adminReorderYears: (orderedIds: string[]) =>
-    request<{ success: boolean }>('/api/admin/years/reorder', {
-      method: 'POST',
-      body: JSON.stringify({ orderedIds }),
-    }),
-
-  // Admin Subjects
-  adminGetSubjects: (courseId?: string, yearId?: string) => {
-    const params = new URLSearchParams();
-    if (courseId) params.append('courseId', courseId);
-    if (yearId) params.append('yearId', yearId);
-    const query = params.toString();
-    return request<Subject[]>(`/api/admin/subjects${query ? `?${query}` : ''}`);
+      body: JSON.stringify(data),
+    });
   },
-  adminCreateSubject: (subject: Partial<Subject>) =>
-    request<Subject>('/api/admin/subjects', {
-      method: 'POST',
-      body: JSON.stringify(subject),
-    }),
-  adminUpdateSubject: (id: string, subject: Partial<Subject>) =>
-    request<Subject>(`/api/admin/subjects/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      body: JSON.stringify(subject),
-    }),
-  adminDeleteSubject: (id: string) =>
-    request<{ success: boolean }>(`/api/admin/subjects/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    }),
-  adminReorderSubjects: (orderedIds: string[]) =>
-    request<{ success: boolean }>('/api/admin/subjects/reorder', {
-      method: 'POST',
-      body: JSON.stringify({ orderedIds }),
-    }),
 
-  // Admin Papers
-  adminGetPapers: (courseId?: string, yearId?: string, subjectId?: string, examYear?: number) => {
-    const params = new URLSearchParams();
-    if (courseId) params.append('courseId', courseId);
-    if (yearId) params.append('yearId', yearId);
-    if (subjectId) params.append('subjectId', subjectId);
-    if (examYear) params.append('examYear', examYear.toString());
-    const query = params.toString();
-    return request<QuestionPaper[]>(`/api/admin/papers${query ? `?${query}` : ''}`);
+  adminDeleteUniversity: async (id: string): Promise<{ success: boolean }> => {
+    return await request<{ success: boolean }>(`/api/admin/universities/${id}`, {
+      method: 'DELETE',
+    });
   },
-  adminCreatePaper: (paper: Partial<QuestionPaper>) =>
-    request<QuestionPaper>('/api/admin/papers', {
-      method: 'POST',
-      body: JSON.stringify(paper),
-    }),
-  adminUpdatePaper: (id: string, paper: Partial<QuestionPaper>) =>
-    request<QuestionPaper>(`/api/admin/papers/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      body: JSON.stringify(paper),
-    }),
-  adminDeletePaper: (id: string) =>
-    request<{ success: boolean }>(`/api/admin/papers/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    }),
-  adminBulkDeletePapers: (ids: string[]) =>
-    request<{ success: boolean; count: number }>('/api/admin/papers/bulk-delete', {
-      method: 'POST',
-      body: JSON.stringify({ ids }),
-    }),
-  adminBulkSetPaperStatus: (ids: string[], status: 'Published' | 'Draft') =>
-    request<{ success: boolean; count: number }>('/api/admin/papers/bulk-status', {
-      method: 'POST',
-      body: JSON.stringify({ ids, status }),
-    }),
 
-  // Admin Upload PDF
-  adminUploadPdf: async (file: File): Promise<{ success: boolean; file_name: string; file_url: string; file_size: string }> => {
-    const token = getAdminToken();
+  adminUploadLogo: async (file: File): Promise<{ success: boolean; logo_url: string }> => {
     const formData = new FormData();
-    formData.append('file', file);
-
-    const res = await fetch('/api/admin/upload-pdf', {
+    formData.append('logo', file);
+    return await request<{ success: boolean; logo_url: string }>('/api/admin/upload-logo', {
       method: 'POST',
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
       body: formData,
     });
+  },
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Upload failed' }));
-      throw new Error(err.error || 'Failed to upload PDF file');
-    }
+  // 2. COURSES
+  getCourses: async (universityId?: string): Promise<Course[]> => {
+    const query = universityId ? `?universityId=${encodeURIComponent(universityId)}` : '';
+    return await request<Course[]>(`/api/courses${query}`);
+  },
 
-    return res.json();
+  getCourseById: async (id: string): Promise<Course> => {
+    return await request<Course>(`/api/courses/${id}`);
+  },
+
+  adminGetCourses: async (universityId?: string): Promise<Course[]> => {
+    const query = universityId ? `?universityId=${encodeURIComponent(universityId)}` : '';
+    return await request<Course[]>(`/api/admin/courses${query}`);
+  },
+
+  adminCreateCourse: async (data: Partial<Course>): Promise<Course> => {
+    return await request<Course>('/api/admin/courses', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  adminUpdateCourse: async (id: string, data: Partial<Course>): Promise<Course> => {
+    return await request<Course>(`/api/admin/courses/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  adminDeleteCourse: async (id: string): Promise<{ success: boolean }> => {
+    return await request<{ success: boolean }>(`/api/admin/courses/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // 3. YEARS
+  getYears: async (params?: { universityId?: string; courseId?: string }): Promise<Year[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.universityId) searchParams.set('universityId', params.universityId);
+    if (params?.courseId) searchParams.set('courseId', params.courseId);
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return await request<Year[]>(`/api/years${query}`);
+  },
+
+  adminGetYears: async (params?: { universityId?: string; courseId?: string }): Promise<Year[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.universityId) searchParams.set('universityId', params.universityId);
+    if (params?.courseId) searchParams.set('courseId', params.courseId);
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return await request<Year[]>(`/api/admin/years${query}`);
+  },
+
+  adminCreateYear: async (data: Partial<Year>): Promise<Year> => {
+    return await request<Year>('/api/admin/years', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  adminUpdateYear: async (id: string, data: Partial<Year>): Promise<Year> => {
+    return await request<Year>(`/api/admin/years/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  adminDeleteYear: async (id: string): Promise<{ success: boolean }> => {
+    return await request<{ success: boolean }>(`/api/admin/years/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // 4. SEMESTERS
+  getSemesters: async (params?: { universityId?: string; courseId?: string; yearId?: string }): Promise<Semester[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.universityId) searchParams.set('universityId', params.universityId);
+    if (params?.courseId) searchParams.set('courseId', params.courseId);
+    if (params?.yearId) searchParams.set('yearId', params.yearId);
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return await request<Semester[]>(`/api/semesters${query}`);
+  },
+
+  adminGetSemesters: async (params?: { universityId?: string; courseId?: string; yearId?: string }): Promise<Semester[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.universityId) searchParams.set('universityId', params.universityId);
+    if (params?.courseId) searchParams.set('courseId', params.courseId);
+    if (params?.yearId) searchParams.set('yearId', params.yearId);
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return await request<Semester[]>(`/api/admin/semesters${query}`);
+  },
+
+  adminCreateSemester: async (data: Partial<Semester>): Promise<Semester> => {
+    return await request<Semester>('/api/admin/semesters', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  adminUpdateSemester: async (id: string, data: Partial<Semester>): Promise<Semester> => {
+    return await request<Semester>(`/api/admin/semesters/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  adminDeleteSemester: async (id: string): Promise<{ success: boolean }> => {
+    return await request<{ success: boolean }>(`/api/admin/semesters/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // 5. PAPER YEARS (Only shows years with uploaded papers)
+  getPaperYears: async (params: { universityId?: string; courseId?: string; yearId?: string; semesterId?: string }): Promise<number[]> => {
+    const searchParams = new URLSearchParams();
+    if (params.universityId) searchParams.set('universityId', params.universityId);
+    if (params.courseId) searchParams.set('courseId', params.courseId);
+    if (params.yearId) searchParams.set('yearId', params.yearId);
+    if (params.semesterId) searchParams.set('semesterId', params.semesterId);
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return await request<number[]>(`/api/paper-years${query}`);
+  },
+
+  // 6. SUBJECTS
+  getSubjects: async (params?: {
+    universityId?: string;
+    courseId?: string;
+    yearId?: string;
+    semesterId?: string;
+    paperYear?: number;
+  }): Promise<Subject[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.universityId) searchParams.set('universityId', params.universityId);
+    if (params?.courseId) searchParams.set('courseId', params.courseId);
+    if (params?.yearId) searchParams.set('yearId', params.yearId);
+    if (params?.semesterId) searchParams.set('semesterId', params.semesterId);
+    if (params?.paperYear) searchParams.set('paperYear', params.paperYear.toString());
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return await request<Subject[]>(`/api/subjects${query}`);
+  },
+
+  getSubjectById: async (id: string): Promise<Subject> => {
+    return await request<Subject>(`/api/subjects/${id}`);
+  },
+
+  adminGetSubjects: async (params?: {
+    universityId?: string;
+    courseId?: string;
+    yearId?: string;
+    semesterId?: string;
+  }): Promise<Subject[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.universityId) searchParams.set('universityId', params.universityId);
+    if (params?.courseId) searchParams.set('courseId', params.courseId);
+    if (params?.yearId) searchParams.set('yearId', params.yearId);
+    if (params?.semesterId) searchParams.set('semesterId', params.semesterId);
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return await request<Subject[]>(`/api/admin/subjects${query}`);
+  },
+
+  adminCreateSubject: async (data: Partial<Subject>): Promise<Subject> => {
+    return await request<Subject>('/api/admin/subjects', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  adminUpdateSubject: async (id: string, data: Partial<Subject>): Promise<Subject> => {
+    return await request<Subject>(`/api/admin/subjects/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  adminDeleteSubject: async (id: string): Promise<{ success: boolean }> => {
+    return await request<{ success: boolean }>(`/api/admin/subjects/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // 7. QUESTION PAPERS
+  getPapers: async (params?: {
+    universityId?: string;
+    courseId?: string;
+    yearId?: string;
+    semesterId?: string;
+    subjectId?: string;
+    paperYear?: number;
+  }): Promise<QuestionPaper[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.universityId) searchParams.set('universityId', params.universityId);
+    if (params?.courseId) searchParams.set('courseId', params.courseId);
+    if (params?.yearId) searchParams.set('yearId', params.yearId);
+    if (params?.semesterId) searchParams.set('semesterId', params.semesterId);
+    if (params?.subjectId) searchParams.set('subjectId', params.subjectId);
+    if (params?.paperYear) searchParams.set('paperYear', params.paperYear.toString());
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return await request<QuestionPaper[]>(`/api/papers${query}`);
+  },
+
+  getPaperById: async (id: string): Promise<QuestionPaper> => {
+    return await request<QuestionPaper>(`/api/papers/${id}`);
+  },
+
+  adminGetPapers: async (params?: {
+    universityId?: string;
+    courseId?: string;
+    yearId?: string;
+    semesterId?: string;
+    subjectId?: string;
+  }): Promise<QuestionPaper[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.universityId) searchParams.set('universityId', params.universityId);
+    if (params?.courseId) searchParams.set('courseId', params.courseId);
+    if (params?.yearId) searchParams.set('yearId', params.yearId);
+    if (params?.semesterId) searchParams.set('semesterId', params.semesterId);
+    if (params?.subjectId) searchParams.set('subjectId', params.subjectId);
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return await request<QuestionPaper[]>(`/api/admin/papers${query}`);
+  },
+
+  adminCreatePaperWithFile: async (formData: FormData): Promise<QuestionPaper> => {
+    return await request<QuestionPaper>('/api/admin/papers', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  adminCreatePaper: async (data: Partial<QuestionPaper>): Promise<QuestionPaper> => {
+    return await request<QuestionPaper>('/api/admin/papers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  adminUpdatePaper: async (id: string, data: Partial<QuestionPaper>): Promise<QuestionPaper> => {
+    return await request<QuestionPaper>(`/api/admin/papers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  adminDeletePaper: async (id: string): Promise<{ success: boolean }> => {
+    return await request<{ success: boolean }>(`/api/admin/papers/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  adminBulkSetPaperStatus: async (paper_ids: string[], status: string) => {
+    return await request<{ success: boolean }>('/api/admin/papers/bulk-status', {
+      method: 'POST',
+      body: JSON.stringify({ paper_ids, status }),
+    });
+  },
+
+  adminBulkDeletePapers: async (paper_ids: string[]) => {
+    return await request<{ success: boolean }>('/api/admin/papers/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ paper_ids }),
+    });
+  },
+
+  adminUploadPdf: async (file: File) => {
+    const formData = new FormData();
+    formData.append('pdf', file);
+    return await request<{ success: boolean; file_url: string; file_name: string; file_size: string }>('/api/admin/upload-pdf', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  // 8. SEARCH & STATS
+  search: async (query: string): Promise<any> => {
+    return await request<any>(`/api/search?q=${encodeURIComponent(query)}`);
+  },
+
+  adminGetStats: async (): Promise<DashboardStats> => {
+    return await request<DashboardStats>('/api/admin/stats');
+  },
+
+  adminUpdateSettings: async (settings: Partial<SiteSettings>) => {
+    return await request<SiteSettings>('/api/admin/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  },
+
+  // Admin Auth
+  adminGetProfile: async (): Promise<AdminUser> => {
+    return await request<AdminUser>('/api/admin/profile');
+  },
+
+  adminLogout: async () => {
+    return await request<{ success: boolean }>('/api/admin/logout', {
+      method: 'POST',
+    });
+  },
+
+  adminChangeCredentials: async (data: any) => {
+    return await request<{ success: boolean; admin?: AdminUser }>('/api/admin/change-credentials', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  adminLoginStep1: async (arg: any) => {
+    const email = typeof arg === 'object' && arg?.email ? arg.email : 'Ramishkji@gmail.com';
+    const password = typeof arg === 'string' ? arg : arg?.password;
+    return await request<any>('/api/admin/login/step1', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+  },
+
+  adminVerifyOtp: async (arg1: any, arg2?: string) => {
+    const sessionKey = typeof arg1 === 'string' ? arg1 : (arg1?.sessionKey || arg1?.challengeId);
+    const otp = typeof arg1 === 'string' ? arg2 : arg1?.otp;
+    return await request<any>('/api/admin/verify-otp', {
+      method: 'POST',
+      body: JSON.stringify({ sessionKey, otp }),
+    });
+  },
+
+  adminResendOtp: async (arg1: any) => {
+    const sessionKey = typeof arg1 === 'string' ? arg1 : (arg1?.sessionKey || arg1?.challengeId);
+    return await request<any>('/api/admin/resend-otp', {
+      method: 'POST',
+      body: JSON.stringify({ sessionKey }),
+    });
   },
 };

@@ -66,7 +66,9 @@ export const UsersTab: React.FC<UsersTabProps> = ({ currentAdmin, onAdminUpdated
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      onAdminUpdated(res.admin);
+      if (res.admin) {
+        onAdminUpdated(res.admin);
+      }
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to update credentials.');
     } finally {

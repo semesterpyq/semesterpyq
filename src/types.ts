@@ -1,5 +1,21 @@
+export interface University {
+  id: string;
+  name: string;
+  code: string;
+  logo_url: string;
+  description?: string;
+  status?: 'active' | 'inactive';
+  is_active?: boolean;
+  display_order?: number;
+  created_at?: string;
+  courses_count?: number;
+  papers_count?: number;
+}
+
 export interface Course {
   id: string;
+  university_id?: string;
+  university_name?: string;
   name: string;
   code: string;
   slug: string;
@@ -20,6 +36,7 @@ export interface Course {
 
 export interface Year {
   id: string;
+  university_id?: string;
   course_id: string;
   name: string;
   year_number: number;
@@ -27,16 +44,38 @@ export interface Year {
   display_order: number;
   is_published: boolean;
   created_at: string;
+  university_name?: string;
   course_name?: string;
   course_code?: string;
+  semesters_count?: number;
+  subjects_count?: number;
+  papers_count?: number;
+}
+
+export interface Semester {
+  id: string;
+  university_id?: string;
+  course_id: string;
+  year_id: string;
+  name: string;
+  semester_number: number;
+  slug?: string;
+  display_order: number;
+  is_published: boolean;
+  created_at: string;
+  university_name?: string;
+  course_name?: string;
+  year_name?: string;
   subjects_count?: number;
   papers_count?: number;
 }
 
 export interface Subject {
   id: string;
+  university_id?: string;
   course_id: string;
   year_id: string;
+  semester_id?: string;
   name: string;
   code: string;
   slug: string;
@@ -46,7 +85,9 @@ export interface Subject {
   created_at: string;
   stream?: string;
   semester?: string;
+  semester_name?: string;
   paper_type?: string;
+  university_name?: string;
   course_name?: string;
   course_code?: string;
   year_name?: string;
@@ -55,12 +96,15 @@ export interface Subject {
 
 export interface QuestionPaper {
   id: string;
+  university_id?: string;
   course_id: string;
   year_id: string;
+  semester_id?: string;
   subject_id: string;
   title: string;
   exam_year: number;
-  exam_session: string; // e.g. "Annual Exam", "Semester Exam", "Supplementary / Back Paper"
+  paper_year?: number;
+  exam_session: string; // e.g. "Annual Exam", "Semester Exam"
   paper_code: string;
   total_marks: number;
   duration: string;
@@ -73,25 +117,26 @@ export interface QuestionPaper {
   download_count: number;
   created_at: string;
   updated_at?: string;
-  // Extended fields for complete Question Paper lifecycle
+  // Extended fields
   stream?: string;
+  university_name?: string;
+  course_name?: string;
+  course_code?: string;
   year_name?: string;
   semester?: string;
-  exam_type?: string; // University Exam, Semester Exam, Annual Exam, Entrance Exam, Competitive Exam, Internal Exam, Model Paper, Other
+  semester_name?: string;
+  subject_name?: string;
+  subject_code?: string;
+  exam_type?: string;
   exam_date?: string;
-  paper_type?: string; // Previous Year Paper, Model Paper, Sample Paper, Practice Paper, Important Questions
-  language?: string; // Hindi, English, Hindi + English
+  paper_type?: string;
+  language?: string;
   description?: string;
   tags?: string[] | string;
   thumbnail_url?: string;
   featured?: boolean;
   free_download?: boolean;
   status?: 'Draft' | 'Published';
-  // Denormalized joins for fast display & search
-  course_name?: string;
-  course_code?: string;
-  subject_name?: string;
-  subject_code?: string;
 }
 
 export interface AdUnitConfig {

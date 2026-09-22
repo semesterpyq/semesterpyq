@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GraduationCap, Menu, X } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { SiteSettings } from '../types';
 import { InfoModalTab } from './InfoModal';
 

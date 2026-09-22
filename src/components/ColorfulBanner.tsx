@@ -1,24 +1,54 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, BookOpen, GraduationCap, Calendar, FileText, ChevronRight, X, Loader2 } from 'lucide-react';
+import { Search, BookOpen, GraduationCap, Building2, FileText, ChevronRight, X, Loader2 } from 'lucide-react';
 import { api } from '../api';
 
 interface SearchResults {
-  courses: Array<{ id: string; name: string; code: string }>;
-  years: Array<{ id: string; course_id: string; name: string }>;
-  subjects: Array<{ id: string; course_id: string; year_id: string; name: string; code: string }>;
-  papers: Array<{ id: string; title: string; exam_year: number; subject_name?: string }>;
+  universities?: Array<{
+    id: string;
+    name: string;
+    code?: string;
+    logo_url?: string;
+  }>;
+  courses?: Array<{
+    id: string;
+    university_id?: string;
+    name: string;
+    code: string;
+    university_name?: string;
+  }>;
+  subjects?: Array<{
+    id: string;
+    course_id: string;
+    university_id?: string;
+    year_id?: string;
+    semester_id?: string;
+    name: string;
+    code?: string;
+    course_name?: string;
+    university_name?: string;
+  }>;
+  papers?: Array<{
+    id: string;
+    title: string;
+    exam_year: number;
+    paper_year?: number;
+    subject_name?: string;
+    course_name?: string;
+    university_name?: string;
+    file_url?: string;
+  }>;
 }
 
 interface ColorfulBannerProps {
-  onSelectCourse: (courseId: string) => void;
-  onSelectYearPaper?: (courseId: string, yearId: string) => void;
-  onSelectSubject?: (courseId: string, yearId: string, subjectId: string) => void;
-  onSelectPaper: (paperId: string) => void;
+  onSelectUniversity?: (universityId: string) => void;
+  onSelectCourse: (courseId: string, universityId?: string) => void;
+  onSelectSubject?: (subjectId: string, courseId?: string, universityId?: string) => void;
+  onSelectPaper: (paper: any) => void;
 }
 
 export const ColorfulBanner: React.FC<ColorfulBannerProps> = ({
+  onSelectUniversity,
   onSelectCourse,
-  onSelectYearPaper,
   onSelectSubject,
   onSelectPaper,
 }) => {
@@ -46,7 +76,7 @@ export const ColorfulBanner: React.FC<ColorfulBannerProps> = ({
       } finally {
         setLoading(false);
       }
-    }, 250);
+    }, 200);
 
     return () => clearTimeout(timer);
   }, [query]);
@@ -62,9 +92,12 @@ export const ColorfulBanner: React.FC<ColorfulBannerProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const totalResults = results
-    ? results.courses.length + results.years.length + results.subjects.length + results.papers.length
-    : 0;
+  const universities = results?.universities || [];
+  const courses = results?.courses || [];
+  const subjects = results?.subjects || [];
+  const papers = results?.papers || [];
+
+  const totalResults = universities.length + courses.length + subjects.length + papers.length;
 
   return (
     <div className="relative w-full overflow-visible">
@@ -78,37 +111,43 @@ export const ColorfulBanner: React.FC<ColorfulBannerProps> = ({
 
         {/* Left / Center: Search Bar Section */}
         <div className="w-full sm:max-w-xl z-10 space-y-3">
-          <div ref={searchContainerRef} className="relative w-full">
-            <div className="relative flex items-center">
-              <Search className="absolute left-4 w-4 h-4 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onFocus={() => {
-                  if (results) setIsOpen(true);
-                }}
-                placeholder="Search courses, subjects or years..."
-                className="w-full pl-11 pr-10 py-3 sm:py-3.5 bg-white text-slate-800 placeholder-slate-400 text-xs sm:text-sm font-medium rounded-full shadow-sm hover:shadow-md focus:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500/40 border border-slate-200/90 transition-all"
-              />
-              {loading && (
-                <div className="absolute right-4 text-slate-400">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                </div>
-              )}
-              {query && !loading && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery('');
-                    setResults(null);
-                    setIsOpen(false);
+          <div ref={searchContainerRef} className="relative w-full group">
+            {/* Animated Glowing Gradient Aura behind search input */}
+            <div className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 via-pink-500 via-sky-400 to-indigo-500 opacity-30 blur-md group-hover:opacity-60 group-focus-within:opacity-80 transition-opacity duration-300 animate-hue-shift" />
+
+            {/* Search Input Box Container with Animated Gradient Border */}
+            <div className="relative p-[2px] rounded-full bg-gradient-to-r from-indigo-500/80 via-purple-500/80 via-pink-500/80 to-sky-400/80 animate-hue-shift shadow-md group-hover:shadow-xl transition-all duration-300">
+              <div className="relative flex items-center bg-white rounded-full">
+                <Search className="absolute left-4 w-4 h-4 text-slate-400 group-focus-within:text-indigo-600 group-hover:scale-110 transition-all duration-300 pointer-events-none" />
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onFocus={() => {
+                    if (results) setIsOpen(true);
                   }}
-                  className="absolute right-3.5 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+                  placeholder="Search university, course, subject, or year..."
+                  className="w-full pl-11 pr-10 py-3 sm:py-3.5 bg-white text-slate-800 placeholder-slate-400 text-xs sm:text-sm font-medium rounded-full focus:outline-none transition-all"
+                />
+                {loading && (
+                  <div className="absolute right-4 text-slate-400">
+                    <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                  </div>
+                )}
+                {query && !loading && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuery('');
+                      setResults(null);
+                      setIsOpen(false);
+                    }}
+                    className="absolute right-3.5 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Live Search Results Dropdown */}
@@ -120,22 +159,63 @@ export const ColorfulBanner: React.FC<ColorfulBannerProps> = ({
                   </div>
                 ) : (
                   <>
-                    {/* Courses */}
-                    {results.courses.length > 0 && (
+                    {/* Universities */}
+                    {universities.length > 0 && (
                       <div className="p-2">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 mb-1.5 flex items-center gap-1.5">
-                          <GraduationCap className="w-3 h-3 text-blue-500" /> Courses
+                          <Building2 className="w-3 h-3 text-indigo-500" /> Universities ({universities.length})
                         </div>
-                        {results.courses.map((c, idx) => (
+                        {universities.map((u) => (
+                          <button
+                            key={u.id}
+                            onClick={() => {
+                              if (onSelectUniversity) onSelectUniversity(u.id);
+                              setIsOpen(false);
+                            }}
+                            className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-indigo-50/80 text-left transition-colors cursor-pointer group"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
+                                {u.logo_url ? (
+                                  <img src={u.logo_url} alt={u.name} className="w-full h-full object-cover rounded-full" />
+                                ) : (
+                                  <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                                )}
+                              </div>
+                              <div>
+                                <span className="font-semibold text-slate-800 group-hover:text-indigo-600 block">{u.name}</span>
+                                <span className="text-[10px] text-slate-400">{u.code || 'University'}</span>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">View</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Courses */}
+                    {courses.length > 0 && (
+                      <div className="p-2">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 mb-1.5 flex items-center gap-1.5">
+                          <GraduationCap className="w-3 h-3 text-blue-500" /> Courses ({courses.length})
+                        </div>
+                        {courses.map((c, idx) => (
                           <button
                             key={`${c.id}-${idx}`}
                             onClick={() => {
-                              onSelectCourse(c.id);
+                              onSelectCourse(c.id, c.university_id);
                               setIsOpen(false);
                             }}
                             className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-blue-50/80 text-left transition-colors cursor-pointer group"
                           >
-                            <span className="font-semibold text-slate-800 group-hover:text-blue-600">{c.name} ({c.code})</span>
+                            <div>
+                              <span className="font-semibold text-slate-800 group-hover:text-blue-600 block">
+                                {c.name} ({c.code})
+                              </span>
+                              {c.university_name && (
+                                <span className="text-[10px] text-slate-400 block">{c.university_name}</span>
+                              )}
+                            </div>
                             <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-blue-500" />
                           </button>
                         ))}
@@ -143,27 +223,33 @@ export const ColorfulBanner: React.FC<ColorfulBannerProps> = ({
                     )}
 
                     {/* Subjects */}
-                    {results.subjects.length > 0 && (
+                    {subjects.length > 0 && (
                       <div className="p-2">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 mb-1.5 flex items-center gap-1.5">
-                          <BookOpen className="w-3 h-3 text-emerald-500" /> Subjects
+                          <BookOpen className="w-3 h-3 text-emerald-500" /> Subjects ({subjects.length})
                         </div>
-                        {results.subjects.map((s) => (
+                        {subjects.map((s) => (
                           <button
                             key={s.id}
                             onClick={() => {
                               if (onSelectSubject) {
-                                onSelectSubject(s.course_id, s.year_id, s.id);
+                                onSelectSubject(s.id, s.course_id, s.university_id);
                               } else {
-                                onSelectCourse(s.course_id);
+                                onSelectCourse(s.course_id, s.university_id);
                               }
                               setIsOpen(false);
                             }}
                             className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-emerald-50/80 text-left transition-colors cursor-pointer group"
                           >
                             <div>
-                              <span className="font-semibold text-slate-800 group-hover:text-emerald-600 block">{s.name}</span>
-                              <span className="text-[11px] text-slate-400">{s.code}</span>
+                              <span className="font-semibold text-slate-800 group-hover:text-emerald-600 block">
+                                {s.name}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                {s.code ? `${s.code} • ` : ''}
+                                {s.course_name || ''}
+                                {s.university_name ? ` (${s.university_name})` : ''}
+                              </span>
                             </div>
                             <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-emerald-500" />
                           </button>
@@ -172,25 +258,32 @@ export const ColorfulBanner: React.FC<ColorfulBannerProps> = ({
                     )}
 
                     {/* Question Papers */}
-                    {results.papers.length > 0 && (
+                    {papers.length > 0 && (
                       <div className="p-2">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 mb-1.5 flex items-center gap-1.5">
-                          <FileText className="w-3 h-3 text-red-500" /> Question Papers
+                          <FileText className="w-3 h-3 text-red-500" /> Question Papers ({papers.length})
                         </div>
-                        {results.papers.map((p) => (
+                        {papers.map((p) => (
                           <button
                             key={p.id}
                             onClick={() => {
-                              onSelectPaper(p.id);
+                              onSelectPaper(p);
                               setIsOpen(false);
                             }}
                             className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-red-50/80 text-left transition-colors cursor-pointer group"
                           >
-                            <div>
-                              <span className="font-medium text-slate-800 group-hover:text-red-600 block">{p.title}</span>
-                              <span className="text-[11px] text-slate-400">{p.subject_name || 'Annual Exam'} • {p.exam_year}</span>
+                            <div className="max-w-[75%]">
+                              <span className="font-medium text-slate-800 group-hover:text-red-600 block truncate">
+                                {p.title}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block truncate">
+                                {p.subject_name || p.course_name || 'Paper'} • Year {p.paper_year || p.exam_year}
+                                {p.university_name ? ` • ${p.university_name}` : ''}
+                              </span>
                             </div>
-                            <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">View</span>
+                            <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200/80 px-2 py-0.5 rounded-md shrink-0">
+                              View PDF
+                            </span>
                           </button>
                         ))}
                       </div>
