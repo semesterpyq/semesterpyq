@@ -534,6 +534,25 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleOpenAdmin = () => {
+    setIsAdmin(true);
+    window.location.hash = 'admin';
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        (e.ctrlKey && e.shiftKey && (e.key === 'a' || e.key === 'A')) ||
+        (e.altKey && (e.key === 'a' || e.key === 'A'))
+      ) {
+        e.preventDefault();
+        handleOpenAdmin();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   if (isAdmin) {
     return (
       <AdminApp
@@ -553,6 +572,7 @@ export default function App() {
           settings={settings}
           onNavigateHome={handleNavigateHome}
           onOpenInfoTab={(tab) => setInfoModalTab(tab)}
+          onOpenAdmin={handleOpenAdmin}
         />
       )}
 
@@ -670,6 +690,7 @@ export default function App() {
         settings={settings}
         onNavigateHome={handleNavigateHome}
         onOpenInfoTab={(tab) => setInfoModalTab(tab)}
+        onOpenAdmin={handleOpenAdmin}
       />
 
       {/* Info Pages Modal (About, Contact, Privacy, Disclaimer) */}

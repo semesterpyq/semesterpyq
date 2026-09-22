@@ -104,7 +104,14 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({ onLoginSuccess, 
         setError('Authentication failed. Please verify credentials and email server settings.');
       }
     } catch (err: any) {
-      setError(err.message || 'Authentication failed. Please verify credentials and server configuration.');
+      const msg = err.message || '';
+      if (msg.includes('405')) {
+        setError(
+          'Backend server is not running on this domain (HTTP 405 Method Not Allowed). GitHub Pages only hosts static files and cannot execute Node.js backend APIs or save uploaded PDFs. Please host the Node.js backend on Render.com, Google Cloud Run, or Railway to connect semesterpyq.in.'
+        );
+      } else {
+        setError(err.message || 'Authentication failed. Please verify credentials and server configuration.');
+      }
     } finally {
       setLoading(false);
     }

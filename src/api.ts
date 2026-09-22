@@ -9,6 +9,15 @@ import {
   DashboardStats,
   AdminUser,
 } from './types';
+import {
+  fallbackSettings,
+  fallbackUniversities,
+  fallbackCourses,
+  fallbackYears,
+  fallbackSemesters,
+  fallbackSubjects,
+  fallbackPapers,
+} from './data/static-fallback';
 
 const ADMIN_TOKEN_KEY = 'lbs_admin_token';
 
@@ -77,7 +86,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
 export const api = {
   getSyncStatus: async (): Promise<{ lastModified: number; papersCount: number }> => {
-    return await request<{ lastModified: number; papersCount: number }>('/api/sync-status');
+    try {
+      return await request<{ lastModified: number; papersCount: number }>('/api/sync-status');
+    } catch {
+      return { lastModified: Date.now(), papersCount: fallbackPapers.length };
+    }
   },
 
   // Settings
@@ -85,33 +98,28 @@ export const api = {
     try {
       return await request<SiteSettings>('/api/settings');
     } catch {
-      return {
-        site_name: 'Semester (PYQs)',
-        tagline: 'Semester Examination Question Paper Archives (PYQs)',
-        college_address: 'Academic Examination Center & Digital Repository',
-        contact_email: 'examination@semesterpyqs.edu',
-        contact_phone: '+91 (0522) 238-9001',
-        logo_url: '/assets/logos/logo.jpg',
-        favicon_url: '/assets/icons/favicon.jpg',
-        hero_title: 'University Question Paper Portal',
-        hero_subtitle: 'Select your university to browse courses, years, semesters, paper years, and subjects.',
-        notice_ticker: '📢 2024 & 2025 Question Papers uploaded for all affiliated Universities.',
-        about_text: 'Semester (PYQs) is an open academic repository offering instant access to previous year question papers.',
-        seo_title: 'Semester (PYQs) - University Question Papers',
-        seo_description: 'Download authentic semester examination question papers.',
-        ad_banner_header: false,
-        ad_banner_paper: false,
-      };
+      return fallbackSettings;
     }
   },
 
   // 1. UNIVERSITIES
   getUniversities: async (): Promise<University[]> => {
-    return await request<University[]>('/api/universities');
+    try {
+      const data = await request<University[]>('/api/universities');
+      return data && data.length > 0 ? data : fallbackUniversities;
+    } catch {
+      return fallbackUniversities;
+    }
   },
 
   getUniversityById: async (id: string): Promise<University> => {
-    return await request<University>(`/api/universities/${id}`);
+    try {
+      return await request<University>(`/api/universities/${id}`);
+    } catch {
+      const found = fallbackUniversities.find((u) => u.id === id);
+      if (found) return found;
+      throw new Error('University not found');
+    }
   },
 
   adminGetUniversities: async (): Promise<University[]> => {
@@ -149,12 +157,23 @@ export const api = {
 
   // 2. COURSES
   getCourses: async (universityId?: string): Promise<Course[]> => {
-    const query = universityId ? `?universityId=${encodeURIComponent(universityId)}` : '';
-    return await request<Course[]>(`/api/courses${query}`);
+    try {
+      const query = universityId ? `?universityId=${encodeURIComponent(universityId)}` : '';
+      const data = await request<Course[]>(`/api/courses${query}`);
+      return data && data.length > 0 ? data : (universityId ? fallbackCourses.filter((c) => c.university_id === universityId) : fallbackCourses);
+    } catch {
+      return universityId ? fallbackCourses.filter((c) => c.university_id === universityId) : fallbackCourses;
+    }
   },
 
   getCourseById: async (id: string): Promise<Course> => {
-    return await request<Course>(`/api/courses/${id}`);
+    try {
+      return await request<Course>(`/api/courses/${id}`);
+    } catch {
+      const found = fallbackCourses.find((c) => c.id === id);
+      if (found) return found;
+      throw new Error('Course not found');
+    }
   },
 
   adminGetCourses: async (universityId?: string): Promise<Course[]> => {
@@ -184,11 +203,24 @@ export const api = {
 
   // 3. YEARS
   getYears: async (params?: { universityId?: string; courseId?: string }): Promise<Year[]> => {
-    const searchParams = new URLSearchParams();
-    if (params?.universityId) searchParams.set('universityId', params.universityId);
-    if (params?.courseId) searchParams.set('courseId', params.courseId);
-    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
-    return await request<Year[]>(`/api/years${query}`);
+    try {
+      const searchParams = new URLSearchParams();
+      if (params?.universityId) searchParams.set('universityId', params.universityId);
+      if (params?.courseId) searchParams.set('courseId', params.courseId);
+      const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+      const data = await request<Year[]>(`/api/years${query}`);
+      return data && data.length > 0 ? data : fallbackYears.filter((y) => {
+        if (params?.universityId && y.university_id !== params.universityId) return false;
+        if (params?.courseId && y.course_id !== params.courseId) return false;
+        return true;
+      });
+    } catch {
+      return fallbackYears.filter((y) => {
+        if (params?.universityId && y.university_id !== params.universityId) return false;
+        if (params?.courseId && y.course_id !== params.courseId) return false;
+        return true;
+      });
+    }
   },
 
   adminGetYears: async (params?: { universityId?: string; courseId?: string }): Promise<Year[]> => {
@@ -221,12 +253,27 @@ export const api = {
 
   // 4. SEMESTERS
   getSemesters: async (params?: { universityId?: string; courseId?: string; yearId?: string }): Promise<Semester[]> => {
-    const searchParams = new URLSearchParams();
-    if (params?.universityId) searchParams.set('universityId', params.universityId);
-    if (params?.courseId) searchParams.set('courseId', params.courseId);
-    if (params?.yearId) searchParams.set('yearId', params.yearId);
-    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
-    return await request<Semester[]>(`/api/semesters${query}`);
+    try {
+      const searchParams = new URLSearchParams();
+      if (params?.universityId) searchParams.set('universityId', params.universityId);
+      if (params?.courseId) searchParams.set('courseId', params.courseId);
+      if (params?.yearId) searchParams.set('yearId', params.yearId);
+      const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+      const data = await request<Semester[]>(`/api/semesters${query}`);
+      return data && data.length > 0 ? data : fallbackSemesters.filter((s) => {
+        if (params?.universityId && s.university_id !== params.universityId) return false;
+        if (params?.courseId && s.course_id !== params.courseId) return false;
+        if (params?.yearId && s.year_id !== params.yearId) return false;
+        return true;
+      });
+    } catch {
+      return fallbackSemesters.filter((s) => {
+        if (params?.universityId && s.university_id !== params.universityId) return false;
+        if (params?.courseId && s.course_id !== params.courseId) return false;
+        if (params?.yearId && s.year_id !== params.yearId) return false;
+        return true;
+      });
+    }
   },
 
   adminGetSemesters: async (params?: { universityId?: string; courseId?: string; yearId?: string }): Promise<Semester[]> => {
@@ -260,13 +307,26 @@ export const api = {
 
   // 5. PAPER YEARS (Only shows years with uploaded papers)
   getPaperYears: async (params: { universityId?: string; courseId?: string; yearId?: string; semesterId?: string }): Promise<number[]> => {
-    const searchParams = new URLSearchParams();
-    if (params.universityId) searchParams.set('universityId', params.universityId);
-    if (params.courseId) searchParams.set('courseId', params.courseId);
-    if (params.yearId) searchParams.set('yearId', params.yearId);
-    if (params.semesterId) searchParams.set('semesterId', params.semesterId);
-    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
-    return await request<number[]>(`/api/paper-years${query}`);
+    try {
+      const searchParams = new URLSearchParams();
+      if (params.universityId) searchParams.set('universityId', params.universityId);
+      if (params.courseId) searchParams.set('courseId', params.courseId);
+      if (params.yearId) searchParams.set('yearId', params.yearId);
+      if (params.semesterId) searchParams.set('semesterId', params.semesterId);
+      const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+      const data = await request<number[]>(`/api/paper-years${query}`);
+      return data && data.length > 0 ? data : [2025, 2024, 2023];
+    } catch {
+      const filtered = fallbackPapers.filter((p) => {
+        if (params.universityId && p.university_id !== params.universityId) return false;
+        if (params.courseId && p.course_id !== params.courseId) return false;
+        if (params.yearId && p.year_id !== params.yearId) return false;
+        if (params.semesterId && p.semester_id !== params.semesterId) return false;
+        return true;
+      });
+      const years = Array.from(new Set(filtered.map((p) => p.paper_year || p.exam_year))).sort((a, b) => b - a);
+      return years.length > 0 ? years : [2025, 2024, 2023];
+    }
   },
 
   // 6. SUBJECTS
@@ -277,18 +337,41 @@ export const api = {
     semesterId?: string;
     paperYear?: number;
   }): Promise<Subject[]> => {
-    const searchParams = new URLSearchParams();
-    if (params?.universityId) searchParams.set('universityId', params.universityId);
-    if (params?.courseId) searchParams.set('courseId', params.courseId);
-    if (params?.yearId) searchParams.set('yearId', params.yearId);
-    if (params?.semesterId) searchParams.set('semesterId', params.semesterId);
-    if (params?.paperYear) searchParams.set('paperYear', params.paperYear.toString());
-    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
-    return await request<Subject[]>(`/api/subjects${query}`);
+    try {
+      const searchParams = new URLSearchParams();
+      if (params?.universityId) searchParams.set('universityId', params.universityId);
+      if (params?.courseId) searchParams.set('courseId', params.courseId);
+      if (params?.yearId) searchParams.set('yearId', params.yearId);
+      if (params?.semesterId) searchParams.set('semesterId', params.semesterId);
+      if (params?.paperYear) searchParams.set('paperYear', params.paperYear.toString());
+      const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+      const data = await request<Subject[]>(`/api/subjects${query}`);
+      return data && data.length > 0 ? data : fallbackSubjects.filter((s) => {
+        if (params?.universityId && s.university_id !== params.universityId) return false;
+        if (params?.courseId && s.course_id !== params.courseId) return false;
+        if (params?.yearId && s.year_id !== params.yearId) return false;
+        if (params?.semesterId && s.semester_id !== params.semesterId) return false;
+        return true;
+      });
+    } catch {
+      return fallbackSubjects.filter((s) => {
+        if (params?.universityId && s.university_id !== params.universityId) return false;
+        if (params?.courseId && s.course_id !== params.courseId) return false;
+        if (params?.yearId && s.year_id !== params.yearId) return false;
+        if (params?.semesterId && s.semester_id !== params.semesterId) return false;
+        return true;
+      });
+    }
   },
 
   getSubjectById: async (id: string): Promise<Subject> => {
-    return await request<Subject>(`/api/subjects/${id}`);
+    try {
+      return await request<Subject>(`/api/subjects/${id}`);
+    } catch {
+      const found = fallbackSubjects.find((s) => s.id === id);
+      if (found) return found;
+      throw new Error('Subject not found');
+    }
   },
 
   adminGetSubjects: async (params?: {
@@ -335,19 +418,46 @@ export const api = {
     subjectId?: string;
     paperYear?: number;
   }): Promise<QuestionPaper[]> => {
-    const searchParams = new URLSearchParams();
-    if (params?.universityId) searchParams.set('universityId', params.universityId);
-    if (params?.courseId) searchParams.set('courseId', params.courseId);
-    if (params?.yearId) searchParams.set('yearId', params.yearId);
-    if (params?.semesterId) searchParams.set('semesterId', params.semesterId);
-    if (params?.subjectId) searchParams.set('subjectId', params.subjectId);
-    if (params?.paperYear) searchParams.set('paperYear', params.paperYear.toString());
-    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
-    return await request<QuestionPaper[]>(`/api/papers${query}`);
+    try {
+      const searchParams = new URLSearchParams();
+      if (params?.universityId) searchParams.set('universityId', params.universityId);
+      if (params?.courseId) searchParams.set('courseId', params.courseId);
+      if (params?.yearId) searchParams.set('yearId', params.yearId);
+      if (params?.semesterId) searchParams.set('semesterId', params.semesterId);
+      if (params?.subjectId) searchParams.set('subjectId', params.subjectId);
+      if (params?.paperYear) searchParams.set('paperYear', params.paperYear.toString());
+      const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+      const data = await request<QuestionPaper[]>(`/api/papers${query}`);
+      return data && data.length > 0 ? data : fallbackPapers.filter((p) => {
+        if (params?.universityId && p.university_id !== params.universityId) return false;
+        if (params?.courseId && p.course_id !== params.courseId) return false;
+        if (params?.yearId && p.year_id !== params.yearId) return false;
+        if (params?.semesterId && p.semester_id !== params.semesterId) return false;
+        if (params?.subjectId && p.subject_id !== params.subjectId) return false;
+        if (params?.paperYear && (p.paper_year || p.exam_year) !== params.paperYear) return false;
+        return true;
+      });
+    } catch {
+      return fallbackPapers.filter((p) => {
+        if (params?.universityId && p.university_id !== params.universityId) return false;
+        if (params?.courseId && p.course_id !== params.courseId) return false;
+        if (params?.yearId && p.year_id !== params.yearId) return false;
+        if (params?.semesterId && p.semester_id !== params.semesterId) return false;
+        if (params?.subjectId && p.subject_id !== params.subjectId) return false;
+        if (params?.paperYear && (p.paper_year || p.exam_year) !== params.paperYear) return false;
+        return true;
+      });
+    }
   },
 
   getPaperById: async (id: string): Promise<QuestionPaper> => {
-    return await request<QuestionPaper>(`/api/papers/${id}`);
+    try {
+      return await request<QuestionPaper>(`/api/papers/${id}`);
+    } catch {
+      const found = fallbackPapers.find((p) => p.id === id);
+      if (found) return found;
+      throw new Error('Paper not found');
+    }
   },
 
   adminGetPapers: async (params?: {
@@ -419,7 +529,21 @@ export const api = {
 
   // 8. SEARCH & STATS
   search: async (query: string): Promise<any> => {
-    return await request<any>(`/api/search?q=${encodeURIComponent(query)}`);
+    try {
+      return await request<any>(`/api/search?q=${encodeURIComponent(query)}`);
+    } catch {
+      const q = query.toLowerCase().trim();
+      const matchedUnivs = fallbackUniversities.filter((u) => u.name.toLowerCase().includes(q) || u.code.toLowerCase().includes(q));
+      const matchedCourses = fallbackCourses.filter((c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q));
+      const matchedSubjects = fallbackSubjects.filter((s) => s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q));
+      const matchedPapers = fallbackPapers.filter((p) => p.title.toLowerCase().includes(q) || (p.paper_code && p.paper_code.toLowerCase().includes(q)));
+      return {
+        universities: matchedUnivs,
+        courses: matchedCourses,
+        subjects: matchedSubjects,
+        papers: matchedPapers,
+      };
+    }
   },
 
   adminGetStats: async (): Promise<DashboardStats> => {
@@ -477,3 +601,4 @@ export const api = {
     });
   },
 };
+

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Menu, X } from 'lucide-react';
 import { SiteSettings } from '../types';
 import { InfoModalTab } from './InfoModal';
@@ -7,14 +7,37 @@ interface NavbarProps {
   settings: SiteSettings;
   onNavigateHome: () => void;
   onOpenInfoTab: (tab: InfoModalTab) => void;
+  onOpenAdmin?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   settings,
   onNavigateHome,
   onOpenInfoTab,
+  onOpenAdmin,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const logoClicksRef = useRef(0);
+  const logoTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleLogoClick = () => {
+    logoClicksRef.current += 1;
+    if (logoTimerRef.current) clearTimeout(logoTimerRef.current);
+
+    if (logoClicksRef.current >= 3) {
+      logoClicksRef.current = 0;
+      if (onOpenAdmin) {
+        onOpenAdmin();
+        return;
+      }
+    }
+
+    logoTimerRef.current = setTimeout(() => {
+      logoClicksRef.current = 0;
+    }, 1200);
+
+    onNavigateHome();
+  };
 
   const handleNavClick = (tab: InfoModalTab) => {
     setMobileMenuOpen(false);
@@ -30,7 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         {/* Semester (PYQs) Logo & Brand */}
         <button
-          onClick={onNavigateHome}
+          onClick={handleLogoClick}
           className="flex items-center space-x-3 text-left group focus:outline-none cursor-pointer"
           aria-label="Home"
         >
