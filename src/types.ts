@@ -205,6 +205,8 @@ export interface SiteSettings {
 export interface AdminUser {
   id: string;
   email: string;
+  name?: string;
+  role?: string;
   last_login?: string;
 }
 
@@ -245,6 +247,7 @@ export interface AdminResendOtpResponse {
 }
 
 export interface SearchResult {
+  universities?: University[];
   courses: Course[];
   years: Year[];
   subjects: Subject[];
@@ -252,8 +255,9 @@ export interface SearchResult {
 }
 
 export interface DashboardStats {
+  total_universities?: number;
   total_courses: number;
-  total_years: number;
+  total_years?: number;
   total_subjects: number;
   total_papers: number;
   total_downloads: number;

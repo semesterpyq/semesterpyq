@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Plus, Edit2, Trash2, CheckCircle2, XCircle, Upload, Image as ImageIcon } from 'lucide-react';
+import { Building2, Plus, Edit2, Trash2, Upload, Image as ImageIcon, AlertTriangle, Loader2 } from 'lucide-react';
 import { University } from '../../types';
 import { api } from '../../api';
 
@@ -15,6 +15,9 @@ export const UniversitiesTab: React.FC<UniversitiesTabProps> = ({ onRefresh }) =
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUniv, setEditingUniv] = useState<University | null>(null);
+  const [deletingUniv, setDeletingUniv] = useState<University | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [description, setDescription] = useState('');
@@ -104,7 +107,7 @@ export const UniversitiesTab: React.FC<UniversitiesTabProps> = ({ onRefresh }) =
         });
       }
       setModalOpen(false);
-      loadUniversities();
+      await loadUniversities();
       onRefresh();
     } catch (err: any) {
       alert(`Error saving university: ${err.message}`);
@@ -113,21 +116,21 @@ export const UniversitiesTab: React.FC<UniversitiesTabProps> = ({ onRefresh }) =
     }
   };
 
-  const handleDelete = async (univ: University) => {
-    if (
-      !confirm(
-        `Are you sure you want to delete "${univ.name}"?\nWarning: This will also delete all courses, years, semesters, subjects, and papers under this university!`
-      )
-    ) {
-      return;
-    }
+  const handleConfirmDelete = async () => {
+    if (!deletingUniv) return;
+    setIsDeleting(true);
 
     try {
-      await api.adminDeleteUniversity(univ.id);
-      loadUniversities();
+      await api.adminDeleteUniversity(deletingUniv.id);
+      // Immediately filter out from UI
+      setUniversities((prev) => prev.filter((u) => u.id !== deletingUniv.id));
+      setDeletingUniv(null);
+      await loadUniversities();
       onRefresh();
     } catch (err: any) {
-      alert(`Failed to delete: ${err.message}`);
+      alert(`Failed to delete university: ${err.message}`);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -153,7 +156,10 @@ export const UniversitiesTab: React.FC<UniversitiesTabProps> = ({ onRefresh }) =
 
       {/* Grid List */}
       {loading ? (
-        <div className="text-center py-12 text-slate-400 text-xs">Loading universities...</div>
+        <div className="text-center py-12 text-slate-400 text-xs flex items-center justify-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+          <span>Loading universities...</span>
+        </div>
       ) : error ? (
         <div className="text-center py-12 text-red-500 text-xs">{error}</div>
       ) : universities.length === 0 ? (
@@ -214,7 +220,7 @@ export const UniversitiesTab: React.FC<UniversitiesTabProps> = ({ onRefresh }) =
                   <Edit2 className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => handleDelete(univ)}
+                  onClick={() => setDeletingUniv(univ)}
                   className="p-2 text-slate-600 hover:text-red-600 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-colors cursor-pointer"
                   title="Delete University"
                 >
@@ -223,6 +229,59 @@ export const UniversitiesTab: React.FC<UniversitiesTabProps> = ({ onRefresh }) =
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingUniv && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 font-serif">Delete University</h3>
+                <p className="text-xs text-slate-500">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs text-slate-700">
+              <p className="font-semibold text-slate-900 mb-1">"{deletingUniv.name}"</p>
+              <p className="text-slate-500">
+                Deleting this university will also remove all affiliated courses, semesters, subjects, and examination papers stored in the cloud database.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeletingUniv(null)}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Confirm Delete</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -242,7 +301,7 @@ export const UniversitiesTab: React.FC<UniversitiesTabProps> = ({ onRefresh }) =
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Lucknow University or Maa Patishwari University"
+                  placeholder="e.g. Lucknow University or Maa Pateshwari University"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -329,14 +388,14 @@ export const UniversitiesTab: React.FC<UniversitiesTabProps> = ({ onRefresh }) =
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-xs"
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-xs cursor-pointer"
                 >
                   {saving ? 'Saving...' : editingUniv ? 'Update University' : 'Create University'}
                 </button>

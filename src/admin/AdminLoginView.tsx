@@ -87,8 +87,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({ onLoginSuccess, 
         password,
       });
 
-      if (res.requiresOtp && res.challengeId) {
-        setChallengeId(res.challengeId);
+      if (res.requiresOtp && (res.challengeId || res.sessionKey)) {
+        setChallengeId(res.challengeId || res.sessionKey || 'ch_' + Date.now());
         setMaskedEmail(res.sentToEmail || res.maskedEmail || 'Ramishkji@gmail.com');
         setResendCooldown(res.resendCooldown || 60);
         setOtp('');
@@ -101,17 +101,10 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({ onLoginSuccess, 
       } else if (res.error) {
         setError(res.error);
       } else {
-        setError('Authentication failed. Please verify credentials and email server settings.');
+        setError('Authentication failed. Please verify credentials.');
       }
     } catch (err: any) {
-      const msg = err.message || '';
-      if (msg.includes('405')) {
-        setError(
-          'Backend server is not running on this domain (HTTP 405 Method Not Allowed). GitHub Pages only hosts static files and cannot execute Node.js backend APIs or save uploaded PDFs. Please host the Node.js backend on Render.com, Google Cloud Run, or Railway to connect semesterpyq.in.'
-        );
-      } else {
-        setError(err.message || 'Authentication failed. Please verify credentials and server configuration.');
-      }
+      setError(err.message || 'Authentication failed. Please verify credentials.');
     } finally {
       setLoading(false);
     }
