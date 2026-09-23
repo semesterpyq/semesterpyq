@@ -62,9 +62,17 @@ export default function App() {
     };
   }, []);
 
-  // Settings & global data
-  const [settings, setSettings] = useState<SiteSettings>(defaultSettings);
-  const [loadingInitial, setLoadingInitial] = useState(true);
+  // Settings & global data with instant cache hydration
+  const [settings, setSettings] = useState<SiteSettings>(() => {
+    try {
+      const cached = localStorage.getItem('lbs_cached_settings');
+      if (cached) return JSON.parse(cached);
+    } catch {
+      // ignore
+    }
+    return defaultSettings;
+  });
+  const [loadingInitial, setLoadingInitial] = useState<boolean>(false);
 
   // Search modal state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -76,7 +84,15 @@ export default function App() {
   const [view, setView] = useState<PublicView>('home');
 
   // Hierarchy entities
-  const [universities, setUniversities] = useState<University[]>([]);
+  const [universities, setUniversities] = useState<University[]>(() => {
+    try {
+      const cached = localStorage.getItem('lbs_cached_universities');
+      if (cached) return JSON.parse(cached);
+    } catch {
+      // ignore
+    }
+    return [];
+  });
   const [activeUniversity, setActiveUniversity] = useState<University | null>(null);
 
   const [courses, setCourses] = useState<Course[]>([]);
@@ -125,8 +141,23 @@ export default function App() {
         api.getUniversities().catch(() => []),
       ]);
 
-      setSettings(settingsRes || defaultSettings);
-      setUniversities(univRes || []);
+      if (settingsRes) {
+        setSettings(settingsRes);
+        try {
+          localStorage.setItem('lbs_cached_settings', JSON.stringify(settingsRes));
+        } catch {
+          // ignore
+        }
+      }
+
+      if (univRes && univRes.length > 0) {
+        setUniversities(univRes);
+        try {
+          localStorage.setItem('lbs_cached_universities', JSON.stringify(univRes));
+        } catch {
+          // ignore
+        }
+      }
     } catch (err) {
       console.error('Failed to load initial data:', err);
     } finally {

@@ -25,8 +25,12 @@ const ADMIN_SESSION_EXPIRY_KEY = 'lbs_admin_session_expiry';
 const ADMIN_DEVICE_ID_KEY = 'lbs_device_id';
 export const ADMIN_SESSION_DURATION_MS = 60 * 60 * 1000; // Exactly 1 hour
 
-// Initialize Firestore seed if needed
-initFirestoreDatabase().catch((e) => console.warn('Firestore init background:', e));
+// Initialize Firestore lazily in background without blocking initial app start
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    initFirestoreDatabase().catch((e) => console.warn('Firestore init background:', e));
+  }, 2500);
+}
 
 export function getAdminToken(): string | null {
   const token = localStorage.getItem(ADMIN_TOKEN_KEY);
@@ -178,9 +182,18 @@ export const api = {
   // Settings
   getSettings: async (): Promise<SiteSettings> => {
     try {
-      const fsSettings = await firestoreApi.getSettings();
-      if (fsSettings && fsSettings.site_name) return fsSettings;
-      return await request<SiteSettings>('/api/settings');
+      const [serverRes, fsRes] = await Promise.allSettled([
+        request<SiteSettings>('/api/settings').catch(() => null),
+        firestoreApi.getSettings().catch(() => null),
+      ]);
+
+      const fsVal = fsRes.status === 'fulfilled' ? fsRes.value : null;
+      if (fsVal && fsVal.site_name) return fsVal;
+
+      const serverVal = serverRes.status === 'fulfilled' ? serverRes.value : null;
+      if (serverVal && serverVal.site_name) return serverVal;
+
+      return fallbackSettings;
     } catch {
       return fallbackSettings;
     }
@@ -189,8 +202,18 @@ export const api = {
   // 1. UNIVERSITIES
   getUniversities: async (): Promise<University[]> => {
     try {
-      const fsData = await firestoreApi.getUniversities();
-      return fsData;
+      const [serverRes, fsRes] = await Promise.allSettled([
+        request<University[]>('/api/universities').catch(() => []),
+        firestoreApi.getUniversities().catch(() => []),
+      ]);
+
+      const fsData = fsRes.status === 'fulfilled' ? fsRes.value : [];
+      if (fsData && fsData.length > 0) return fsData;
+
+      const serverData = serverRes.status === 'fulfilled' ? serverRes.value : [];
+      if (serverData && serverData.length > 0) return serverData;
+
+      return fallbackUniversities;
     } catch {
       return fallbackUniversities;
     }

@@ -105,75 +105,23 @@ export async function initFirestoreDatabase() {
   if (isInitialized) return;
   isInitialized = true;
 
-  try {
-    // Check if settings exists
-    const settingsRef = doc(db, 'settings', 'config');
-    const settingsSnap = await getDoc(settingsRef);
-    if (!settingsSnap.exists()) {
-      await setDoc(settingsRef, fallbackSettings);
-    }
+  if (typeof localStorage !== 'undefined' && localStorage.getItem('lbs_db_init_v3')) {
+    return;
+  }
 
+  try {
     const initMarkerRef = doc(db, 'settings', 'seed_marker_v3');
     const initMarkerSnap = await getDoc(initMarkerRef);
 
     if (!initMarkerSnap.exists()) {
-      // Purge any old dummy default documents from Firestore
-      try {
-        await deleteDoc(doc(db, 'universities', 'univ-mpu'));
-        await deleteDoc(doc(db, 'universities', 'univ-lu'));
-        await deleteDoc(doc(db, 'courses', 'course-ba-mpu'));
-        await deleteDoc(doc(db, 'courses', 'course-bsc-mpu'));
-        await deleteDoc(doc(db, 'courses', 'course-ba-lu'));
-        await deleteDoc(doc(db, 'courses', 'course-bsc-lu'));
-        await deleteDoc(doc(db, 'courses', 'course-bcom-lu'));
-        await deleteDoc(doc(db, 'courses', 'course-bca-lu'));
-        await deleteDoc(doc(db, 'years', 'yr-bsc-mpu-1'));
-        await deleteDoc(doc(db, 'years', 'yr-bsc-mpu-2'));
-        await deleteDoc(doc(db, 'semesters', 'sem-mpu-bsc-1'));
-        await deleteDoc(doc(db, 'semesters', 'sem-mpu-bsc-2'));
-        await deleteDoc(doc(db, 'subjects', 'sub-mpu-math-1'));
-      } catch (cleanErr) {
-        console.warn('Old dummy document cleanup notice:', cleanErr);
-      }
-
       await setDoc(initMarkerRef, { seeded: true, timestamp: Date.now() });
-      console.log('Database initialized cleanly without dummy records.');
     }
 
-    const logoFixMarkerRef = doc(db, 'settings', 'logo_fix_marker_v1');
-    const logoFixSnap = await getDoc(logoFixMarkerRef);
-    if (!logoFixSnap.exists()) {
-      try {
-        const univSnaps = await getDocs(collection(db, 'universities'));
-        for (const uDoc of univSnaps.docs) {
-          const u = uDoc.data() as University;
-          const code = (u.code || '').toLowerCase();
-          const name = (u.name || '').toLowerCase();
-          let newLogo = u.logo_url;
-
-          if (!newLogo || newLogo.includes('/uploads/logos/') || newLogo === '/assets/logos/logo.jpg') {
-            if (code === 'mpublp' || name.includes('pateshwari')) {
-              newLogo = '/assets/logos/mpublp.jpg';
-            } else if (code === 'rmlau' || name.includes('lohia') || name.includes('rmlau')) {
-              newLogo = '/assets/logos/rmlau.png';
-            } else if (code === 'lu' || name.includes('lucknow')) {
-              newLogo = '/assets/logos/lu.jpg';
-            } else if (code === 'au' || name.includes('allahabad')) {
-              newLogo = '/assets/logos/au.jpg';
-            }
-          }
-
-          if (newLogo && newLogo !== u.logo_url) {
-            await setDoc(doc(db, 'universities', u.id), { logo_url: newLogo }, { merge: true });
-          }
-        }
-        await setDoc(logoFixMarkerRef, { fixed: true, timestamp: Date.now() });
-      } catch (e) {
-        console.warn('Logo migration notice:', e);
-      }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('lbs_db_init_v3', 'true');
     }
   } catch (err) {
-    console.warn('Firestore initialization notice:', err);
+    console.warn('Firestore background init notice:', err);
   }
 }
 

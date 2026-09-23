@@ -36,10 +36,12 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
   const pageContainerRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const canvasRefs = useRef<{ [key: number]: HTMLCanvasElement | null }>({});
   const activeRenderTasks = useRef<{ [key: number]: any }>({});
+  const renderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [numPages, setNumPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [scale, setScale] = useState<number>(1.0);
+  const [renderScale, setRenderScale] = useState<number>(1.0);
   const [fitMode, setFitMode] = useState<'width' | 'custom'>('width');
   const [rotation, setRotation] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
@@ -49,34 +51,52 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
   const [blobPdfUrl, setBlobPdfUrl] = useState<string | null>(null);
   const [jumpPageInput, setJumpPageInput] = useState<string>('1');
   const [basePageDimensions, setBasePageDimensions] = useState<{ [key: number]: PageDimension }>({});
+  const [isDragging, setIsDragging] = useState<boolean>(false);
 
   const scaleRef = useRef<number>(1.0);
   scaleRef.current = scale;
 
   const anchorRef = useRef<{
-    focalRatioX: number;
-    focalRatioY: number;
-    viewportFocalX: number;
-    viewportFocalY: number;
+    docX: number;
+    docY: number;
+    viewportX: number;
+    viewportY: number;
   } | null>(null);
+
+  // Mouse drag-to-pan state
+  const mouseDragRef = useRef<{
+    isDown: boolean;
+    startX: number;
+    startY: number;
+    scrollLeft: number;
+    scrollTop: number;
+    hasMoved: boolean;
+  }>({
+    isDown: false,
+    startX: 0,
+    startY: 0,
+    scrollLeft: 0,
+    scrollTop: 0,
+    hasMoved: false,
+  });
 
   // Multi-touch pinch state for mobile / touchscreens
   const touchStateRef = useRef<{
     isPinching: boolean;
     initialDistance: number;
     initialScale: number;
-    initialMidX: number;
-    initialMidY: number;
-    initialScrollLeft: number;
-    initialScrollTop: number;
+    focalDocX: number;
+    focalDocY: number;
+    viewportFocalX: number;
+    viewportFocalY: number;
   }>({
     isPinching: false,
     initialDistance: 0,
     initialScale: 1.0,
-    initialMidX: 0,
-    initialMidY: 0,
-    initialScrollLeft: 0,
-    initialScrollTop: 0,
+    focalDocX: 0,
+    focalDocY: 0,
+    viewportFocalX: 0,
+    viewportFocalY: 0,
   });
 
   const pdfFileUrl = paper.file_url || `/api/papers/${paper.id}/file`;
@@ -87,27 +107,39 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
       if (blobPdfUrl) {
         URL.revokeObjectURL(blobPdfUrl);
       }
+      if (renderTimeoutRef.current) {
+        clearTimeout(renderTimeoutRef.current);
+      }
       Object.values(activeRenderTasks.current).forEach((task) => {
         try {
           task?.cancel();
         } catch {
-          // ignore task cancellation
+          // ignore
         }
       });
     };
   }, [blobPdfUrl]);
 
-  // Compute responsive edge-to-edge fit-to-width scale (No side margins/gaps)
+  // Compute responsive edge-to-edge fit-to-width scale
   const calculateFitWidthScale = useCallback((viewportWidth: number) => {
     if (!containerRef.current || !viewportWidth) return 1.0;
     const containerWidth = containerRef.current.clientWidth;
-    // Edge-to-edge available width (minimal buffer to avoid micro-scrollbar)
-    const availableWidth = Math.max(containerWidth - 6, 200);
+    const availableWidth = Math.max(containerWidth - 8, 200);
     const fitScale = availableWidth / viewportWidth;
     return Number(fitScale.toFixed(2));
   }, []);
 
-  // Update zoom with focal anchor to eliminate jumping
+  // Debounced High-DPI rasterization on settle
+  const scheduleHighResRender = useCallback((targetScale: number) => {
+    if (renderTimeoutRef.current) {
+      clearTimeout(renderTimeoutRef.current);
+    }
+    renderTimeoutRef.current = setTimeout(() => {
+      setRenderScale(targetScale);
+    }, 160);
+  }, []);
+
+  // Update zoom with focal anchor to eliminate jumping and distortion
   const setZoomWithAnchor = useCallback(
     (
       newScale: number,
@@ -115,46 +147,49 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
       mode: 'width' | 'custom' = 'custom'
     ) => {
       const container = containerRef.current;
-      const clampedScale = Math.min(Math.max(Number(newScale.toFixed(2)), 0.35), 3.5);
+      const clampedScale = Math.min(Math.max(Number(newScale.toFixed(3)), 0.35), 4.0);
 
       if (!container || clampedScale === scaleRef.current) {
         setScale(clampedScale);
         setFitMode(mode);
+        scheduleHighResRender(clampedScale);
         return;
       }
 
       const rect = container.getBoundingClientRect();
       const currentScale = scaleRef.current;
 
-      let viewportX = focalPoint ? focalPoint.clientX - rect.left : container.clientWidth / 2;
-      let viewportY = focalPoint ? focalPoint.clientY - rect.top : container.clientHeight / 2;
-
-      viewportX = Math.max(0, Math.min(viewportX, container.clientWidth));
-      viewportY = Math.max(0, Math.min(viewportY, container.clientHeight));
+      const viewportX = focalPoint
+        ? Math.max(0, Math.min(focalPoint.clientX - rect.left, container.clientWidth))
+        : container.clientWidth / 2;
+      const viewportY = focalPoint
+        ? Math.max(0, Math.min(focalPoint.clientY - rect.top, container.clientHeight))
+        : container.clientHeight / 2;
 
       const docX = (container.scrollLeft + viewportX) / currentScale;
       const docY = (container.scrollTop + viewportY) / currentScale;
 
       anchorRef.current = {
-        focalRatioX: docX,
-        focalRatioY: docY,
-        viewportFocalX: viewportX,
-        viewportFocalY: viewportY,
+        docX,
+        docY,
+        viewportX,
+        viewportY,
       };
 
       setFitMode(mode);
       setScale(clampedScale);
+      scheduleHighResRender(clampedScale);
     },
-    []
+    [scheduleHighResRender]
   );
 
-  // Sync scroll positioning synchronously after zoom change
+  // Sync scroll positioning synchronously after zoom change without layout flicker
   useLayoutEffect(() => {
     if (anchorRef.current && containerRef.current) {
-      const { focalRatioX, focalRatioY, viewportFocalX, viewportFocalY } = anchorRef.current;
+      const { docX, docY, viewportX, viewportY } = anchorRef.current;
       const container = containerRef.current;
-      container.scrollLeft = Math.max(0, focalRatioX * scale - viewportFocalX);
-      container.scrollTop = Math.max(0, focalRatioY * scale - viewportFocalY);
+      container.scrollLeft = Math.max(0, docX * scale - viewportX);
+      container.scrollTop = Math.max(0, docY * scale - viewportY);
       anchorRef.current = null;
     }
   }, [scale]);
@@ -266,6 +301,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
         const firstPageVp = dims[1] || { width: 612, height: 792 };
         const initialScale = calculateFitWidthScale(firstPageVp.width);
         setScale(initialScale);
+        setRenderScale(initialScale);
         scaleRef.current = initialScale;
         setLoading(false);
       } catch (err: any) {
@@ -283,9 +319,9 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
     };
   }, [pdfFileUrl, calculateFitWidthScale, paper]);
 
-  // Ultra-crisp High-DPI canvas rendering (Fixes all blurriness on mobile/desktop/retina)
+  // Ultra-crisp High-DPI canvas rendering
   const renderSinglePage = useCallback(
-    async (pageNum: number, pdf: any, currentScale: number, currentRotation: number) => {
+    async (pageNum: number, pdf: any, targetScale: number, currentRotation: number) => {
       const canvas = canvasRefs.current[pageNum];
       if (!pdf || !canvas) return;
 
@@ -293,38 +329,25 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
         try {
           activeRenderTasks.current[pageNum].cancel();
         } catch {
-          // ignore
+          // ignore cancellation
         }
       }
 
       try {
         const page = await pdf.getPage(pageNum);
-        
-        // Use devicePixelRatio or supersample to minimum 2.0 for razor-sharp text and images
         const pixelRatio = Math.max(window.devicePixelRatio || 1, 2.0);
-        
-        // High-resolution viewport for rasterizing vector fonts and crisp images
+
         const highResViewport = page.getViewport({
-          scale: currentScale * pixelRatio,
+          scale: targetScale * pixelRatio,
           rotation: currentRotation,
         });
 
-        // Exact CSS display size
-        const cssWidth = Math.floor(highResViewport.width / pixelRatio);
-        const cssHeight = Math.floor(highResViewport.height / pixelRatio);
-
-        // Physical canvas buffer dimensions
         canvas.width = Math.floor(highResViewport.width);
         canvas.height = Math.floor(highResViewport.height);
-
-        // Match display style to logical CSS pixels
-        canvas.style.width = `${cssWidth}px`;
-        canvas.style.height = `${cssHeight}px`;
 
         const context = canvas.getContext('2d', { alpha: false });
         if (!context) return;
 
-        // Optimize image smoothing quality
         context.imageSmoothingEnabled = true;
         context.imageSmoothingQuality = 'high';
 
@@ -348,16 +371,16 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
     []
   );
 
-  // Render all pages
+  // Render all pages on settled renderScale or rotation change
   useEffect(() => {
     if (pdfDoc && numPages > 0) {
       for (let p = 1; p <= numPages; p++) {
-        renderSinglePage(p, pdfDoc, scale, rotation);
+        renderSinglePage(p, pdfDoc, renderScale, rotation);
       }
     }
-  }, [pdfDoc, numPages, scale, rotation, renderSinglePage]);
+  }, [pdfDoc, numPages, renderScale, rotation, renderSinglePage]);
 
-  // Track active page when scrolling
+  // Track active page during scrolling
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
     if (!container || numPages <= 1) return;
@@ -408,7 +431,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
     }
   }, []);
 
-  // Multi-Touch Pinch-to-Zoom on mobile
+  // Multi-Touch Pinch-to-Zoom on mobile & Touch Panning
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -420,13 +443,19 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
         const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
         const rect = container.getBoundingClientRect();
 
-        touchStateRef.current.isPinching = true;
-        touchStateRef.current.initialDistance = dist;
-        touchStateRef.current.initialScale = scaleRef.current;
-        touchStateRef.current.initialMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
-        touchStateRef.current.initialMidY = (t1.clientY + t2.clientY) / 2 - rect.top;
-        touchStateRef.current.initialScrollLeft = container.scrollLeft;
-        touchStateRef.current.initialScrollTop = container.scrollTop;
+        const midX = (t1.clientX + t2.clientX) / 2 - rect.left;
+        const midY = (t1.clientY + t2.clientY) / 2 - rect.top;
+        const curScale = scaleRef.current;
+
+        touchStateRef.current = {
+          isPinching: true,
+          initialDistance: dist,
+          initialScale: curScale,
+          focalDocX: (container.scrollLeft + midX) / curScale,
+          focalDocY: (container.scrollTop + midY) / curScale,
+          viewportFocalX: midX,
+          viewportFocalY: midY,
+        };
       }
     };
 
@@ -442,13 +471,21 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
           const ratio = dist / touchStateRef.current.initialDistance;
           const targetScale = Math.min(
             Math.max(touchStateRef.current.initialScale * ratio, 0.35),
-            3.5
+            4.0
           );
 
-          setZoomWithAnchor(targetScale, {
-            clientX: (t1.clientX + t2.clientX) / 2,
-            clientY: (t1.clientY + t2.clientY) / 2,
-          });
+          const { focalDocX, focalDocY, viewportFocalX, viewportFocalY } = touchStateRef.current;
+
+          anchorRef.current = {
+            docX: focalDocX,
+            docY: focalDocY,
+            viewportX: viewportFocalX,
+            viewportY: viewportFocalY,
+          };
+
+          setScale(targetScale);
+          setFitMode('custom');
+          scheduleHighResRender(targetScale);
         }
       }
     };
@@ -457,14 +494,16 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
       if (touchStateRef.current.isPinching && e.touches.length < 2) {
         touchStateRef.current.isPinching = false;
         touchStateRef.current.initialDistance = 0;
+        scheduleHighResRender(scaleRef.current);
       }
     };
 
+    // Smooth Desktop Trackpad Pinch / Ctrl+Wheel Zoom
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        const delta = -e.deltaY * 0.008;
-        const newScale = Math.min(Math.max(scaleRef.current + delta, 0.35), 3.5);
+        const factor = Math.exp(-e.deltaY * 0.006);
+        const newScale = Math.min(Math.max(scaleRef.current * factor, 0.35), 4.0);
         setZoomWithAnchor(newScale, { clientX: e.clientX, clientY: e.clientY });
       }
     };
@@ -473,7 +512,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
     container.addEventListener('touchmove', handleTouchMove, { passive: false });
     container.addEventListener('touchend', handleTouchEnd);
     container.addEventListener('touchcancel', handleTouchEnd);
-    container.addEventListener('wheel', handleWheel);
+    container.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => {
       container.removeEventListener('touchstart', handleTouchStart);
@@ -482,7 +521,46 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
       container.removeEventListener('touchcancel', handleTouchEnd);
       container.removeEventListener('wheel', handleWheel);
     };
-  }, [setZoomWithAnchor]);
+  }, [setZoomWithAnchor, scheduleHighResRender]);
+
+  // Desktop Mouse Drag-to-Pan (when zoomed or panning)
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return; // primary button only
+    const container = containerRef.current;
+    if (!container) return;
+
+    mouseDragRef.current = {
+      isDown: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      scrollLeft: container.scrollLeft,
+      scrollTop: container.scrollTop,
+      hasMoved: false,
+    };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!mouseDragRef.current.isDown || !containerRef.current) return;
+    const dx = e.clientX - mouseDragRef.current.startX;
+    const dy = e.clientY - mouseDragRef.current.startY;
+
+    if (!mouseDragRef.current.hasMoved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+      mouseDragRef.current.hasMoved = true;
+      setIsDragging(true);
+    }
+
+    if (mouseDragRef.current.hasMoved) {
+      containerRef.current.scrollLeft = mouseDragRef.current.scrollLeft - dx;
+      containerRef.current.scrollTop = mouseDragRef.current.scrollTop - dy;
+    }
+  };
+
+  const handleMouseUpOrLeave = () => {
+    if (mouseDragRef.current.isDown) {
+      mouseDragRef.current.isDown = false;
+      setIsDragging(false);
+    }
+  };
 
   // Window resize handler
   useEffect(() => {
@@ -491,6 +569,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
       const firstDim = basePageDimensions[1] || { width: 612, height: 792 };
       const newScale = calculateFitWidthScale(firstDim.width);
       setScale(newScale);
+      setRenderScale(newScale);
       scaleRef.current = newScale;
     };
 
@@ -583,7 +662,6 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
     >
       {/* ============================================================
           FIXED GOOGLE DRIVE / CHROME STYLE TOP TOOLBAR
-          Properly respects Mobile Safe-Area & Viewport Bounds
       ============================================================ */}
       <header
         style={{
@@ -683,7 +761,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
 
             <button
               onClick={handleZoomIn}
-              disabled={scale >= 3.5 || loading}
+              disabled={scale >= 4.0 || loading}
               className="p-0.5 sm:p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
               title="Zoom In (+)"
             >
@@ -763,12 +841,18 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
       </header>
 
       {/* ============================================================
-          MAIN VIEWER CANVAS AREA (Crisp High-DPI, 100% space)
+          MAIN VIEWER CANVAS AREA (Ultra-smooth drag/pan, zoom, scroll)
       ============================================================ */}
       <main
         ref={containerRef}
         onScroll={handleScroll}
-        className="w-full flex-1 bg-[#202124] overflow-y-auto overflow-x-auto p-0 m-0 flex flex-col items-center select-none"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUpOrLeave}
+        onMouseLeave={handleMouseUpOrLeave}
+        className={`w-full flex-1 bg-[#202124] overflow-y-auto overflow-x-auto p-0 m-0 flex flex-col items-center select-none ${
+          isDragging ? 'cursor-grabbing' : 'cursor-default'
+        }`}
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
@@ -807,12 +891,12 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
 
         {/* Continuous High-DPI Centered Pages Stack */}
         {!loading && !error && pdfDoc && (
-          <div className="w-full flex flex-col items-center gap-3 sm:gap-4 py-2 sm:py-4 m-0">
+          <div className="w-full min-w-fit flex flex-col items-center gap-3 sm:gap-4 py-2 sm:py-4 m-0 px-1">
             {Array.from({ length: numPages }, (_, idx) => idx + 1).map((pageNum) => {
               const baseDim = basePageDimensions[pageNum] || { width: 612, height: 792 };
               const isRotated = rotation === 90 || rotation === 270;
-              const pageWidth = isRotated ? baseDim.height * scale : baseDim.width * scale;
-              const pageHeight = isRotated ? baseDim.width * scale : baseDim.height * scale;
+              const displayWidth = isRotated ? baseDim.height * scale : baseDim.width * scale;
+              const displayHeight = isRotated ? baseDim.width * scale : baseDim.height * scale;
 
               return (
                 <div
@@ -820,20 +904,25 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
                   ref={(el) => {
                     pageContainerRefs.current[pageNum] = el;
                   }}
-                  className="relative flex flex-col items-center mx-auto transition-all duration-75"
+                  className="relative flex flex-col items-center mx-auto transition-transform duration-75 shrink-0"
                   style={{
-                    width: pageWidth ? `${Math.floor(pageWidth)}px` : 'auto',
-                    minHeight: pageHeight ? `${Math.floor(pageHeight)}px` : 'auto',
-                    maxWidth: '100%',
+                    width: `${Math.floor(displayWidth)}px`,
+                    height: `${Math.floor(displayHeight)}px`,
                   }}
                 >
-                  {/* Razor-sharp High-DPI PDF Canvas */}
-                  <div className="bg-white shadow-[0_2px_12px_rgba(0,0,0,0.5)] overflow-hidden max-w-full">
+                  {/* Razor-sharp High-DPI PDF Canvas with strictly preserved aspect ratio */}
+                  <div
+                    className="bg-white shadow-[0_2px_12px_rgba(0,0,0,0.5)] overflow-hidden"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                    }}
+                  >
                     <canvas
                       ref={(el) => {
                         canvasRefs.current[pageNum] = el;
                       }}
-                      className="block max-w-full h-auto bg-white"
+                      className="block w-full h-full bg-white object-contain"
                       style={{
                         imageRendering: '-webkit-optimize-contrast',
                       }}
