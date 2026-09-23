@@ -58,6 +58,25 @@ export interface FirestoreErrorInfo {
   };
 }
 
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === undefined || data === null) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.map((item) => sanitizeForFirestore(item)) as unknown as T;
+  }
+  if (typeof data === 'object' && !(data instanceof Date)) {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        cleaned[key] = sanitizeForFirestore(value);
+      }
+    }
+    return cleaned as T;
+  }
+  return data;
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
@@ -181,8 +200,9 @@ export const firestoreApi = {
   updateSettings: async (data: Partial<SiteSettings>): Promise<SiteSettings> => {
     const p = 'settings/config';
     try {
+      const sanitized = sanitizeForFirestore(data);
       const ref = doc(db, 'settings', 'config');
-      await setDoc(ref, data, { merge: true });
+      await setDoc(ref, sanitized, { merge: true });
       const snap = await getDoc(ref);
       return snap.data() as SiteSettings;
     } catch (err) {
@@ -209,7 +229,8 @@ export const firestoreApi = {
   createUniversity: async (univ: University): Promise<University> => {
     const p = `universities/${univ.id}`;
     try {
-      await setDoc(doc(db, 'universities', univ.id), univ);
+      const sanitized = sanitizeForFirestore(univ);
+      await setDoc(doc(db, 'universities', univ.id), sanitized);
       return univ;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, p);
@@ -220,8 +241,9 @@ export const firestoreApi = {
   updateUniversity: async (id: string, univ: Partial<University>): Promise<University> => {
     const p = `universities/${id}`;
     try {
+      const sanitized = sanitizeForFirestore(univ);
       const ref = doc(db, 'universities', id);
-      await setDoc(ref, univ, { merge: true });
+      await setDoc(ref, sanitized, { merge: true });
       const snap = await getDoc(ref);
       return snap.data() as University;
     } catch (err) {
@@ -303,7 +325,8 @@ export const firestoreApi = {
   createCourse: async (course: Course): Promise<Course> => {
     const p = `courses/${course.id}`;
     try {
-      await setDoc(doc(db, 'courses', course.id), course);
+      const sanitized = sanitizeForFirestore(course);
+      await setDoc(doc(db, 'courses', course.id), sanitized);
       return course;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, p);
@@ -314,8 +337,9 @@ export const firestoreApi = {
   updateCourse: async (id: string, course: Partial<Course>): Promise<Course> => {
     const p = `courses/${id}`;
     try {
+      const sanitized = sanitizeForFirestore(course);
       const ref = doc(db, 'courses', id);
-      await setDoc(ref, course, { merge: true });
+      await setDoc(ref, sanitized, { merge: true });
       const snap = await getDoc(ref);
       return snap.data() as Course;
     } catch (err) {
@@ -328,6 +352,26 @@ export const firestoreApi = {
     const p = `courses/${id}`;
     try {
       await deleteDoc(doc(db, 'courses', id));
+      try {
+        const yearsSnap = await getDocs(query(collection(db, 'years'), where('course_id', '==', id)));
+        for (const d of yearsSnap.docs) {
+          await deleteDoc(doc(db, 'years', d.id));
+        }
+        const semsSnap = await getDocs(query(collection(db, 'semesters'), where('course_id', '==', id)));
+        for (const d of semsSnap.docs) {
+          await deleteDoc(doc(db, 'semesters', d.id));
+        }
+        const subsSnap = await getDocs(query(collection(db, 'subjects'), where('course_id', '==', id)));
+        for (const d of subsSnap.docs) {
+          await deleteDoc(doc(db, 'subjects', d.id));
+        }
+        const papersSnap = await getDocs(query(collection(db, 'papers'), where('course_id', '==', id)));
+        for (const d of papersSnap.docs) {
+          await deleteDoc(doc(db, 'papers', d.id));
+        }
+      } catch (cascadeErr) {
+        console.warn('Cascade deletion notice:', cascadeErr);
+      }
       return true;
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, p);
@@ -364,7 +408,8 @@ export const firestoreApi = {
   createYear: async (year: Year): Promise<Year> => {
     const p = `years/${year.id}`;
     try {
-      await setDoc(doc(db, 'years', year.id), year);
+      const sanitized = sanitizeForFirestore(year);
+      await setDoc(doc(db, 'years', year.id), sanitized);
       return year;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, p);
@@ -375,8 +420,9 @@ export const firestoreApi = {
   updateYear: async (id: string, year: Partial<Year>): Promise<Year> => {
     const p = `years/${id}`;
     try {
+      const sanitized = sanitizeForFirestore(year);
       const ref = doc(db, 'years', id);
-      await setDoc(ref, year, { merge: true });
+      await setDoc(ref, sanitized, { merge: true });
       const snap = await getDoc(ref);
       return snap.data() as Year;
     } catch (err) {
@@ -389,6 +435,22 @@ export const firestoreApi = {
     const p = `years/${id}`;
     try {
       await deleteDoc(doc(db, 'years', id));
+      try {
+        const semsSnap = await getDocs(query(collection(db, 'semesters'), where('year_id', '==', id)));
+        for (const d of semsSnap.docs) {
+          await deleteDoc(doc(db, 'semesters', d.id));
+        }
+        const subsSnap = await getDocs(query(collection(db, 'subjects'), where('year_id', '==', id)));
+        for (const d of subsSnap.docs) {
+          await deleteDoc(doc(db, 'subjects', d.id));
+        }
+        const papersSnap = await getDocs(query(collection(db, 'papers'), where('year_id', '==', id)));
+        for (const d of papersSnap.docs) {
+          await deleteDoc(doc(db, 'papers', d.id));
+        }
+      } catch (cascadeErr) {
+        console.warn('Cascade deletion notice:', cascadeErr);
+      }
       return true;
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, p);
@@ -427,7 +489,8 @@ export const firestoreApi = {
   createSemester: async (semester: Semester): Promise<Semester> => {
     const p = `semesters/${semester.id}`;
     try {
-      await setDoc(doc(db, 'semesters', semester.id), semester);
+      const sanitized = sanitizeForFirestore(semester);
+      await setDoc(doc(db, 'semesters', semester.id), sanitized);
       return semester;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, p);
@@ -438,8 +501,9 @@ export const firestoreApi = {
   updateSemester: async (id: string, semester: Partial<Semester>): Promise<Semester> => {
     const p = `semesters/${id}`;
     try {
+      const sanitized = sanitizeForFirestore(semester);
       const ref = doc(db, 'semesters', id);
-      await setDoc(ref, semester, { merge: true });
+      await setDoc(ref, sanitized, { merge: true });
       const snap = await getDoc(ref);
       return snap.data() as Semester;
     } catch (err) {
@@ -452,6 +516,18 @@ export const firestoreApi = {
     const p = `semesters/${id}`;
     try {
       await deleteDoc(doc(db, 'semesters', id));
+      try {
+        const subsSnap = await getDocs(query(collection(db, 'subjects'), where('semester_id', '==', id)));
+        for (const d of subsSnap.docs) {
+          await deleteDoc(doc(db, 'subjects', d.id));
+        }
+        const papersSnap = await getDocs(query(collection(db, 'papers'), where('semester_id', '==', id)));
+        for (const d of papersSnap.docs) {
+          await deleteDoc(doc(db, 'papers', d.id));
+        }
+      } catch (cascadeErr) {
+        console.warn('Cascade deletion notice:', cascadeErr);
+      }
       return true;
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, p);
@@ -498,7 +574,8 @@ export const firestoreApi = {
   createSubject: async (subject: Subject): Promise<Subject> => {
     const p = `subjects/${subject.id}`;
     try {
-      await setDoc(doc(db, 'subjects', subject.id), subject);
+      const sanitized = sanitizeForFirestore(subject);
+      await setDoc(doc(db, 'subjects', subject.id), sanitized);
       return subject;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, p);
@@ -509,8 +586,9 @@ export const firestoreApi = {
   updateSubject: async (id: string, subject: Partial<Subject>): Promise<Subject> => {
     const p = `subjects/${id}`;
     try {
+      const sanitized = sanitizeForFirestore(subject);
       const ref = doc(db, 'subjects', id);
-      await setDoc(ref, subject, { merge: true });
+      await setDoc(ref, sanitized, { merge: true });
       const snap = await getDoc(ref);
       return snap.data() as Subject;
     } catch (err) {
@@ -523,6 +601,14 @@ export const firestoreApi = {
     const p = `subjects/${id}`;
     try {
       await deleteDoc(doc(db, 'subjects', id));
+      try {
+        const papersSnap = await getDocs(query(collection(db, 'papers'), where('subject_id', '==', id)));
+        for (const d of papersSnap.docs) {
+          await deleteDoc(doc(db, 'papers', d.id));
+        }
+      } catch (cascadeErr) {
+        console.warn('Cascade deletion notice:', cascadeErr);
+      }
       return true;
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, p);
@@ -574,7 +660,8 @@ export const firestoreApi = {
   createPaper: async (paper: QuestionPaper): Promise<QuestionPaper> => {
     const p = `papers/${paper.id}`;
     try {
-      await setDoc(doc(db, 'papers', paper.id), paper);
+      const sanitized = sanitizeForFirestore(paper);
+      await setDoc(doc(db, 'papers', paper.id), sanitized);
       return paper;
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, p);
@@ -585,8 +672,9 @@ export const firestoreApi = {
   updatePaper: async (id: string, paper: Partial<QuestionPaper>): Promise<QuestionPaper> => {
     const p = `papers/${id}`;
     try {
+      const sanitized = sanitizeForFirestore(paper);
       const ref = doc(db, 'papers', id);
-      await setDoc(ref, paper, { merge: true });
+      await setDoc(ref, sanitized, { merge: true });
       const snap = await getDoc(ref);
       return snap.data() as QuestionPaper;
     } catch (err) {

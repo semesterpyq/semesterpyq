@@ -385,18 +385,37 @@ export const api = {
   },
 
   adminDeleteCourse: async (id: string): Promise<{ success: boolean }> => {
+    let firestoreSucceeded = false;
+    let serverSucceeded = false;
+    let lastError: any = null;
+
     try {
       await firestoreApi.deleteCourse(id);
-    } catch (e) {
-      console.warn('Firestore delete warning:', e);
+      firestoreSucceeded = true;
+    } catch (e: any) {
+      console.error('Firestore course delete error:', e);
+      lastError = e;
     }
+
     try {
       await request<{ success: boolean }>(`/api/admin/courses/${id}`, {
         method: 'DELETE',
       });
-    } catch {
-      // server optional
+      serverSucceeded = true;
+    } catch (e: any) {
+      console.error('Server course delete error:', e);
+      lastError = e;
     }
+
+    if (!firestoreSucceeded && !serverSucceeded) {
+      throw lastError || new Error('Failed to delete course from database.');
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('lbs_sync_updated'));
+      localStorage.setItem('lbs_sync_timestamp', String(Date.now()));
+    }
+
     return { success: true };
   },
 
@@ -483,18 +502,37 @@ export const api = {
   },
 
   adminDeleteYear: async (id: string): Promise<{ success: boolean }> => {
+    let firestoreSucceeded = false;
+    let serverSucceeded = false;
+    let lastError: any = null;
+
     try {
       await firestoreApi.deleteYear(id);
-    } catch (e) {
-      console.warn('Firestore delete warning:', e);
+      firestoreSucceeded = true;
+    } catch (e: any) {
+      console.error('Firestore year delete error:', e);
+      lastError = e;
     }
+
     try {
       await request<{ success: boolean }>(`/api/admin/years/${id}`, {
         method: 'DELETE',
       });
-    } catch {
-      // server optional
+      serverSucceeded = true;
+    } catch (e: any) {
+      console.error('Server year delete error:', e);
+      lastError = e;
     }
+
+    if (!firestoreSucceeded && !serverSucceeded) {
+      throw lastError || new Error('Failed to delete year from database.');
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('lbs_sync_updated'));
+      localStorage.setItem('lbs_sync_timestamp', String(Date.now()));
+    }
+
     return { success: true };
   },
 
@@ -584,23 +622,42 @@ export const api = {
   },
 
   adminDeleteSemester: async (id: string): Promise<{ success: boolean }> => {
+    let firestoreSucceeded = false;
+    let serverSucceeded = false;
+    let lastError: any = null;
+
     try {
       await firestoreApi.deleteSemester(id);
-    } catch (e) {
-      console.warn('Firestore delete warning:', e);
+      firestoreSucceeded = true;
+    } catch (e: any) {
+      console.error('Firestore semester delete error:', e);
+      lastError = e;
     }
+
     try {
       await request<{ success: boolean }>(`/api/admin/semesters/${id}`, {
         method: 'DELETE',
       });
-    } catch {
-      // server optional
+      serverSucceeded = true;
+    } catch (e: any) {
+      console.error('Server semester delete error:', e);
+      lastError = e;
     }
+
+    if (!firestoreSucceeded && !serverSucceeded) {
+      throw lastError || new Error('Failed to delete semester from database.');
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('lbs_sync_updated'));
+      localStorage.setItem('lbs_sync_timestamp', String(Date.now()));
+    }
+
     return { success: true };
   },
 
   // 5. PAPER YEARS
-  getPaperYears: async (params: { universityId?: string; courseId?: string; yearId?: string; semesterId?: string }): Promise<number[]> => {
+  getPaperYears: async (params: { universityId?: string; courseId?: string; yearId?: string; semesterId?: string; subjectId?: string }): Promise<number[]> => {
     try {
       const papers = await firestoreApi.getPapers(params);
       const years = Array.from(new Set(papers.map((p) => p.paper_year || p.exam_year))).filter(Boolean).sort((a, b) => b - a);
@@ -612,6 +669,7 @@ export const api = {
         if (params.courseId) queryParams.set('courseId', params.courseId);
         if (params.yearId) queryParams.set('yearId', params.yearId);
         if (params.semesterId) queryParams.set('semesterId', params.semesterId);
+        if (params.subjectId) queryParams.set('subjectId', params.subjectId);
         const serverPapers = await request<QuestionPaper[]>(`/api/papers?${queryParams.toString()}`);
         if (serverPapers && serverPapers.length > 0) {
           const sYears = Array.from(new Set(serverPapers.map((p) => p.paper_year || p.exam_year))).filter(Boolean).sort((a, b) => b - a);
@@ -621,9 +679,9 @@ export const api = {
         // quiet fallback
       }
 
-      return [2025, 2024, 2023, 2022, 2021];
+      return [];
     } catch {
-      return [2025, 2024, 2023, 2022, 2021];
+      return [];
     }
   },
 
@@ -820,18 +878,37 @@ export const api = {
   },
 
   adminDeleteSubject: async (id: string): Promise<{ success: boolean }> => {
+    let firestoreSucceeded = false;
+    let serverSucceeded = false;
+    let lastError: any = null;
+
     try {
       await firestoreApi.deleteSubject(id);
-    } catch (e) {
-      console.warn('Firestore delete warning:', e);
+      firestoreSucceeded = true;
+    } catch (e: any) {
+      console.error('Firestore subject delete error:', e);
+      lastError = e;
     }
+
     try {
       await request<{ success: boolean }>(`/api/admin/subjects/${id}`, {
         method: 'DELETE',
       });
-    } catch {
-      // server optional
+      serverSucceeded = true;
+    } catch (e: any) {
+      console.error('Server subject delete error:', e);
+      lastError = e;
     }
+
+    if (!firestoreSucceeded && !serverSucceeded) {
+      throw lastError || new Error('Failed to delete subject from database.');
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('lbs_sync_updated'));
+      localStorage.setItem('lbs_sync_timestamp', String(Date.now()));
+    }
+
     return { success: true };
   },
 
@@ -898,12 +975,7 @@ export const api = {
     semesterId?: string;
     subjectId?: string;
   }): Promise<QuestionPaper[]> => {
-    try {
-      const data = await firestoreApi.getPapers(params, true);
-      if (data && data.length > 0) return data;
-    } catch {
-      // ignore
-    }
+    let serverPapers: QuestionPaper[] = [];
     try {
       const queryParams = new URLSearchParams();
       if (params?.universityId) queryParams.set('universityId', params.universityId);
@@ -911,10 +983,50 @@ export const api = {
       if (params?.yearId) queryParams.set('yearId', params.yearId);
       if (params?.semesterId) queryParams.set('semesterId', params.semesterId);
       if (params?.subjectId) queryParams.set('subjectId', params.subjectId);
-      return await request<QuestionPaper[]>(`/api/admin/papers?${queryParams.toString()}`);
+      serverPapers = await request<QuestionPaper[]>(`/api/admin/papers?${queryParams.toString()}`);
     } catch {
+      serverPapers = [];
+    }
+
+    let firestorePapers: QuestionPaper[] = [];
+    try {
+      firestorePapers = await firestoreApi.getPapers(params, true);
+    } catch {
+      firestorePapers = [];
+    }
+
+    if (serverPapers.length === 0 && firestorePapers.length === 0) {
       return [];
     }
+
+    if (serverPapers.length > 0 && firestorePapers.length === 0) {
+      return serverPapers;
+    }
+
+    if (firestorePapers.length > 0 && serverPapers.length === 0) {
+      return firestorePapers;
+    }
+
+    // Merge papers by ID, keeping the record with the latest update or server source
+    const map = new Map<string, QuestionPaper>();
+    for (const p of firestorePapers) {
+      if (p.id) map.set(p.id, p);
+    }
+    for (const p of serverPapers) {
+      if (!p.id) continue;
+      const existing = map.get(p.id);
+      if (!existing) {
+        map.set(p.id, p);
+      } else {
+        const existingTime = new Date(existing.updated_at || existing.created_at || 0).getTime();
+        const serverTime = new Date(p.updated_at || p.created_at || 0).getTime();
+        if (serverTime >= existingTime) {
+          map.set(p.id, { ...existing, ...p });
+        }
+      }
+    }
+
+    return Array.from(map.values());
   },
 
   adminCreatePaperWithFile: async (formData: FormData): Promise<QuestionPaper> => {
@@ -968,6 +1080,7 @@ export const api = {
 
     // 2. Save to dev server if available
     try {
+      formData.append('id', newPaperId);
       const serverRes = await request<QuestionPaper>('/api/admin/papers', {
         method: 'POST',
         body: formData,
@@ -1045,16 +1158,26 @@ export const api = {
 
   adminUpdatePaper: async (id: string, data: Partial<QuestionPaper>): Promise<QuestionPaper> => {
     const rawYear = data.paper_year || data.exam_year;
+    const cleanData: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) cleanData[key] = value;
+    }
     const mergedData = {
-      ...data,
+      ...cleanData,
       ...(rawYear ? { paper_year: Number(rawYear), exam_year: Number(rawYear) } : {}),
       updated_at: new Date().toISOString(),
     };
 
+    let firestoreSucceeded = false;
+    let serverSucceeded = false;
+    let lastError: any = null;
+
     try {
       await firestoreApi.updatePaper(id, mergedData);
-    } catch (e) {
-      console.warn('Firestore paper update warning:', e);
+      firestoreSucceeded = true;
+    } catch (e: any) {
+      console.error('Firestore paper update error:', e);
+      lastError = e;
     }
 
     try {
@@ -1062,8 +1185,14 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(mergedData),
       });
-    } catch {
-      // server optional
+      serverSucceeded = true;
+    } catch (e: any) {
+      console.error('Server paper update error:', e);
+      lastError = e;
+    }
+
+    if (!firestoreSucceeded && !serverSucceeded) {
+      throw lastError || new Error('Failed to update question paper in both Firestore and local database.');
     }
 
     if (typeof window !== 'undefined') {
@@ -1075,17 +1204,30 @@ export const api = {
   },
 
   adminDeletePaper: async (id: string): Promise<{ success: boolean }> => {
+    let firestoreSucceeded = false;
+    let serverSucceeded = false;
+    let lastError: any = null;
+
     try {
       await firestoreApi.deletePaper(id);
-    } catch (e) {
-      console.warn('Firestore paper delete warning:', e);
+      firestoreSucceeded = true;
+    } catch (e: any) {
+      console.error('Firestore paper delete error:', e);
+      lastError = e;
     }
+
     try {
       await request<{ success: boolean }>(`/api/admin/papers/${id}`, {
         method: 'DELETE',
       });
-    } catch {
-      // server optional
+      serverSucceeded = true;
+    } catch (e: any) {
+      console.error('Server paper delete error:', e);
+      lastError = e;
+    }
+
+    if (!firestoreSucceeded && !serverSucceeded) {
+      throw lastError || new Error('Failed to delete question paper in both Firestore and local database.');
     }
 
     if (typeof window !== 'undefined') {
@@ -1097,10 +1239,11 @@ export const api = {
   },
 
   adminBulkSetPaperStatus: async (paper_ids: string[], status: string) => {
-    const isPublished = status === 'published';
+    const isPublished = status.toLowerCase() === 'published';
+    const statusStr = isPublished ? 'Published' : 'Draft';
     for (const pid of paper_ids) {
       try {
-        await firestoreApi.updatePaper(pid, { is_published: isPublished });
+        await firestoreApi.updatePaper(pid, { is_published: isPublished, status: statusStr });
       } catch (e) {
         // continue
       }
@@ -1108,7 +1251,7 @@ export const api = {
     try {
       await request<{ success: boolean }>('/api/admin/papers/bulk-status', {
         method: 'POST',
-        body: JSON.stringify({ paper_ids, status }),
+        body: JSON.stringify({ paper_ids, status: statusStr, is_published: isPublished }),
       });
     } catch {
       // optional
@@ -1117,21 +1260,35 @@ export const api = {
   },
 
   adminBulkDeletePapers: async (paper_ids: string[]) => {
-    for (const pid of paper_ids) {
-      try {
+    let firestoreSucceeded = false;
+    let serverSucceeded = false;
+    let lastError: any = null;
+
+    try {
+      for (const pid of paper_ids) {
         await firestoreApi.deletePaper(pid);
-      } catch (e) {
-        // continue
       }
+      firestoreSucceeded = true;
+    } catch (e: any) {
+      console.error('Firestore bulk delete error:', e);
+      lastError = e;
     }
+
     try {
       await request<{ success: boolean }>('/api/admin/papers/bulk-delete', {
         method: 'POST',
         body: JSON.stringify({ paper_ids }),
       });
-    } catch {
-      // optional
+      serverSucceeded = true;
+    } catch (e: any) {
+      console.error('Server bulk delete error:', e);
+      lastError = e;
     }
+
+    if (!firestoreSucceeded && !serverSucceeded) {
+      throw lastError || new Error('Failed to perform bulk delete on both Firestore and local database.');
+    }
+
     return { success: true };
   },
 

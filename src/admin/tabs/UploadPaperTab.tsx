@@ -9,7 +9,6 @@ import {
   Calendar,
   Layers,
   BookOpen,
-  Sparkles,
   Loader2,
   PlusCircle,
   ExternalLink,
@@ -50,7 +49,6 @@ export const UploadPaperTab: React.FC<UploadPaperTabProps> = ({
   const [pdfFile, setPdfFile] = useState<File | null>(null);
 
   const [uploading, setUploading] = useState(false);
-  const [generatingYears, setGeneratingYears] = useState(false);
   const [quickSubjectName, setQuickSubjectName] = useState('');
   const [quickSubjectCode, setQuickSubjectCode] = useState('');
   const [showQuickSubject, setShowQuickSubject] = useState(false);
@@ -178,20 +176,6 @@ export const UploadPaperTab: React.FC<UploadPaperTabProps> = ({
   useEffect(() => {
     refreshSubjects();
   }, [selectedSemesterId, selectedYearId, selectedCourseId, selectedUnivId]);
-
-  const handleAutoCreateYears = async (numYears: number = 3) => {
-    if (!selectedCourseId) return;
-    setGeneratingYears(true);
-    try {
-      await api.adminAutoGenerateYearsAndSemesters(selectedCourseId, numYears, selectedUnivId);
-      await refreshYears();
-      setSuccessMsg(`⚡ Auto-generated ${numYears} Academic Years & ${numYears * 2} Semesters successfully!`);
-    } catch (err: any) {
-      setErrorMsg(`Auto generation failed: ${err.message}`);
-    } finally {
-      setGeneratingYears(false);
-    }
-  };
 
   const handleQuickAddSubject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -396,19 +380,6 @@ export const UploadPaperTab: React.FC<UploadPaperTabProps> = ({
                 ))
               )}
             </select>
-            {years.length === 0 && selectedCourseId && (
-              <div className="mt-1.5 flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={generatingYears}
-                  onClick={() => handleAutoCreateYears(3)}
-                  className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-lg border border-indigo-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
-                >
-                  {generatingYears ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-indigo-600" />}
-                  <span>⚡ Auto-Create 3 Years & 6 Semesters</span>
-                </button>
-              </div>
-            )}
           </div>
 
           {/* Semester */}
@@ -633,3 +604,4 @@ export const UploadPaperTab: React.FC<UploadPaperTabProps> = ({
     </div>
   );
 };
+

@@ -21,8 +21,10 @@ import {
 } from 'lucide-react';
 import {
   AdminUser,
+  University,
   Course,
   Year,
+  Semester,
   Subject,
   QuestionPaper,
   SiteSettings,
@@ -61,8 +63,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [universities, setUniversities] = useState<University[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [years, setYears] = useState<Year[]>([]);
+  const [semesters, setSemesters] = useState<Semester[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [papers, setPapers] = useState<QuestionPaper[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,16 +98,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!isSilent) setLoading(true);
     setRefreshing(true);
     try {
-      const [statsRes, coursesRes, yearsRes, subjectsRes, papersRes] = await Promise.all([
+      const [statsRes, univsRes, coursesRes, yearsRes, semsRes, subjectsRes, papersRes] = await Promise.all([
         api.adminGetStats().catch(() => null),
+        api.adminGetUniversities().catch(() => []),
         api.adminGetCourses().catch(() => []),
         api.adminGetYears().catch(() => []),
+        api.adminGetSemesters().catch(() => []),
         api.adminGetSubjects().catch(() => []),
         api.adminGetPapers().catch(() => []),
       ]);
       setStats(statsRes);
+      setUniversities(univsRes || []);
       setCourses(coursesRes || []);
       setYears(yearsRes || []);
+      setSemesters(semsRes || []);
       setSubjects(subjectsRes || []);
       setPapers(papersRes || []);
     } catch (err) {
@@ -301,8 +309,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* 3. All Question Papers Tab */}
           {activeTab === 'all-papers' && (
             <AllPapersTab
+              universities={universities}
               courses={courses}
               years={years}
+              semesters={semesters}
               subjects={subjects}
               papers={papers}
               onRefresh={handleManualRefresh}

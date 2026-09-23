@@ -245,7 +245,7 @@ export class Database {
   }
 
   public createUniversity(univ: any) {
-    const id = 'univ-' + crypto.randomUUID().slice(0, 8);
+    const id = univ.id || ('univ-' + crypto.randomUUID().slice(0, 8));
     const newUniv = {
       id,
       name: univ.name,
@@ -324,7 +324,7 @@ export class Database {
   }
 
   public createCourse(course: any) {
-    const id = 'course-' + crypto.randomUUID().slice(0, 8);
+    const id = course.id || ('course-' + crypto.randomUUID().slice(0, 8));
     const newCourse = {
       id,
       university_id: course.university_id,
@@ -412,7 +412,7 @@ export class Database {
   }
 
   public createYear(year: any) {
-    const id = 'yr-' + crypto.randomUUID().slice(0, 8);
+    const id = year.id || ('yr-' + crypto.randomUUID().slice(0, 8));
     const parentCourse = this.data.courses.find((c: any) => c.id === year.course_id);
     const newYear = {
       id,
@@ -504,7 +504,7 @@ export class Database {
   }
 
   public createSemester(sem: any) {
-    const id = 'sem-' + crypto.randomUUID().slice(0, 8);
+    const id = sem.id || ('sem-' + crypto.randomUUID().slice(0, 8));
     const parentYear = this.data.years.find((y: any) => y.id === sem.year_id);
     const newSem = {
       id,
@@ -623,7 +623,7 @@ export class Database {
   }
 
   public createSubject(subject: any) {
-    const id = 'sub-' + crypto.randomUUID().slice(0, 8);
+    const id = subject.id || ('sub-' + crypto.randomUUID().slice(0, 8));
     const parentSem = this.data.semesters.find((s: any) => s.id === subject.semester_id);
     const newSubject = {
       id,
@@ -698,13 +698,13 @@ export class Database {
       const sub = this.data.subjects.find((item: any) => item.id === p.subject_id);
       return {
         ...p,
-        university_name: u?.name,
-        course_name: c?.name,
-        course_code: c?.code,
-        year_name: y?.name,
-        semester_name: sem?.name,
-        subject_name: sub?.name,
-        subject_code: sub?.code,
+        university_name: u?.name || p.university_name || '',
+        course_name: c?.name || p.course_name || '',
+        course_code: c?.code || p.course_code || '',
+        year_name: y?.name || p.year_name || '',
+        semester_name: sem?.name || p.semester_name || p.semester || '',
+        subject_name: sub?.name || p.subject_name || '',
+        subject_code: sub?.code || p.subject_code || '',
         paper_year: p.paper_year || p.exam_year,
       };
     });
@@ -720,19 +720,19 @@ export class Database {
     const sub = this.data.subjects.find((item: any) => item.id === p.subject_id);
     return {
       ...p,
-      university_name: u?.name,
-      course_name: c?.name,
-      course_code: c?.code,
-      year_name: y?.name,
-      semester_name: sem?.name,
-      subject_name: sub?.name,
-      subject_code: sub?.code,
+      university_name: u?.name || p.university_name || '',
+      course_name: c?.name || p.course_name || '',
+      course_code: c?.code || p.course_code || '',
+      year_name: y?.name || p.year_name || '',
+      semester_name: sem?.name || p.semester_name || p.semester || '',
+      subject_name: sub?.name || p.subject_name || '',
+      subject_code: sub?.code || p.subject_code || '',
       paper_year: p.paper_year || p.exam_year,
     };
   }
 
   public createPaper(paper: any) {
-    const id = 'qp-' + crypto.randomUUID().slice(0, 10);
+    const id = paper.id || ('qp-' + crypto.randomUUID().slice(0, 10));
     const examYearNum = Number(paper.paper_year || paper.exam_year) || new Date().getFullYear();
 
     const parentSub = this.data.subjects.find((s: any) => s.id === paper.subject_id);
@@ -775,7 +775,40 @@ export class Database {
 
   public updatePaper(id: string, updates: any) {
     const index = this.data.papers.findIndex((p: any) => p.id === id);
-    if (index === -1) return null;
+    if (index === -1) {
+      // Self-healing: if the paper is not in local DB but is being updated from client, create it!
+      const parentSub = this.data.subjects.find((s: any) => s.id === (updates.subject_id || ''));
+      const parentSem = this.data.semesters.find((s: any) => s.id === (updates.semester_id || parentSub?.semester_id));
+
+      const newPaper = {
+        id,
+        university_id: updates.university_id || parentSub?.university_id || parentSem?.university_id || '',
+        course_id: updates.course_id || parentSub?.course_id || parentSem?.course_id || '',
+        year_id: updates.year_id || parentSub?.year_id || parentSem?.year_id || '',
+        semester_id: updates.semester_id || parentSub?.semester_id || '',
+        subject_id: updates.subject_id || '',
+        title: updates.title || 'Question Paper',
+        paper_year: Number(updates.paper_year || updates.exam_year) || new Date().getFullYear(),
+        exam_year: Number(updates.paper_year || updates.exam_year) || new Date().getFullYear(),
+        exam_session: updates.exam_session || 'Semester Exam',
+        paper_code: updates.paper_code || 'QP',
+        total_marks: Number(updates.total_marks) || 75,
+        duration: updates.duration || '3 Hours',
+        file_name: updates.file_name || 'paper.pdf',
+        file_url: updates.file_url || '',
+        file_size: updates.file_size || '1.2 MB',
+        is_published: updates.is_published !== false,
+        status: updates.status || (updates.is_published !== false ? 'Published' : 'Draft'),
+        view_count: updates.view_count || 0,
+        download_count: updates.download_count || 0,
+        created_at: updates.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      this.data.papers.push(newPaper);
+      this.save();
+      return this.getPaperById(id);
+    }
+
     this.data.papers[index] = {
       ...this.data.papers[index],
       ...updates,
