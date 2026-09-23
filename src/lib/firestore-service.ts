@@ -559,10 +559,17 @@ export const firestoreApi = {
       }
       let list: Subject[] = [];
       snap.forEach((d) => list.push(d.data() as Subject));
-      if (params?.universityId) list = list.filter((s) => s.university_id === params.universityId);
-      if (params?.courseId) list = list.filter((s) => s.course_id === params.courseId);
-      if (params?.yearId) list = list.filter((s) => s.year_id === params.yearId);
-      if (params?.semesterId) list = list.filter((s) => s.semester_id === params.semesterId);
+      if (params?.universityId && params.universityId !== 'all') {
+        list = list.filter((s) => !s.university_id || s.university_id === params.universityId);
+      }
+      if (params?.courseId && params.courseId !== 'all') {
+        list = list.filter((s) => !s.course_id || s.course_id === params.courseId);
+      }
+      if (params?.semesterId && params.semesterId !== 'all') {
+        list = list.filter((s) => s.semester_id === params.semesterId);
+      } else if (params?.yearId && params.yearId !== 'all') {
+        list = list.filter((s) => !s.year_id || s.year_id === params.yearId);
+      }
       return list.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
     } catch (err) {
       if (skipFallback) return [];

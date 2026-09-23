@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Layers,
   Plus,
@@ -9,8 +9,11 @@ import {
   Calendar,
   Loader2,
   Save,
+  RotateCcw,
   CheckCircle2,
   AlertCircle,
+  X,
+  Search,
 } from 'lucide-react';
 import { Course, Semester, University, Year } from '../../types';
 import { api } from '../../api';
@@ -19,82 +22,83 @@ interface SemestersTabProps {
   onRefresh: () => void;
 }
 
-interface PendingCreateSemester {
+interface PendingSemesterCreate {
   tempId: string;
-  data: {
-    university_id: string;
-    course_id: string;
-    year_id: string;
-    name: string;
-    semester_number: number;
-  };
+  university_id: string;
+  course_id: string;
+  year_id: string;
+  name: string;
+  semester_number: number;
+}
+
+interface PendingSemesterUpdate {
+  id: string;
+  university_id: string;
+  course_id: string;
+  year_id: string;
+  name: string;
+  semester_number: number;
 }
 
 export const SemestersTab: React.FC<SemestersTabProps> = ({ onRefresh }) => {
   const [universities, setUniversities] = useState<University[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [years, setYears] = useState<Year[]>([]);
-  const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [dbSemesters, setDbSemesters] = useState<Semester[]>([]);
 
-  const [selectedUnivId, setSelectedUnivId] = useState<string>('');
-  const [selectedCourseId, setSelectedCourseId] = useState<string>('');
-  const [selectedYearId, setSelectedYearId] = useState<string>('');
+  // Filter state
+  const [selectedUnivId, setSelectedUnivId] = useState<string>('all');
+  const [selectedCourseId, setSelectedCourseId] = useState<string>('all');
+  const [selectedYearId, setSelectedYearId] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   const [loading, setLoading] = useState(true);
 
-  // Notifications
-  const [successNotice, setSuccessNotice] = useState<string | null>(null);
-  const [errorNotice, setErrorNotice] = useState<string | null>(null);
-
   // Pending Changes State
-  const [pendingCreates, setPendingCreates] = useState<PendingCreateSemester[]>([]);
-  const [pendingUpdates, setPendingUpdates] = useState<
-    Map<string, { name: string; semester_number: number }>
-  >(new Map());
-  const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
+  const [pendingCreates, setPendingCreates] = useState<PendingSemesterCreate[]>([]);
+  const [pendingUpdates, setPendingUpdates] = useState<Record<string, PendingSemesterUpdate>>({});
+  const [pendingDeletes, setPendingDeletes] = useState<string[]>([]);
+
+  // Save changes state
   const [isSavingChanges, setIsSavingChanges] = useState(false);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+  const [saveErrorMsg, setSaveErrorMsg] = useState<string | null>(null);
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
   const [editingSem, setEditingSem] = useState<Semester | null>(null);
+  const [modalUnivId, setModalUnivId] = useState('');
+  const [modalCourseId, setModalCourseId] = useState('');
+  const [modalYearId, setModalYearId] = useState('');
+  const [modalCourses, setModalCourses] = useState<Course[]>([]);
+  const [modalYears, setModalYears] = useState<Year[]>([]);
   const [name, setName] = useState('');
   const [semesterNumber, setSemesterNumber] = useState<number>(1);
-  const [modalError, setModalError] = useState<string | null>(null);
 
   // Delete modal state
   const [deleteConfirmSem, setDeleteConfirmSem] = useState<Semester | null>(null);
 
-  // Load initial universities
+  // Load Universities
   useEffect(() => {
-    const loadFilters = async () => {
+    const loadUniversities = async () => {
       try {
         const uList = await api.adminGetUniversities();
         setUniversities(uList || []);
-        if (uList && uList.length > 0) {
-          setSelectedUnivId(uList[0].id);
-        }
       } catch (err) {
         console.error('Failed to load universities:', err);
       }
     };
-    loadFilters();
+    loadUniversities();
   }, []);
 
-  // When selected university changes, load courses
+  // Load Courses for Filter
   useEffect(() => {
-    if (!selectedUnivId) {
-      setCourses([]);
-      setSelectedCourseId('');
-      return;
-    }
     const loadCourses = async () => {
       try {
-        const cList = await api.adminGetCourses(selectedUnivId);
+        const cList = await api.adminGetCourses(selectedUnivId !== 'all' ? selectedUnivId : undefined);
         setCourses(cList || []);
-        if (cList && cList.length > 0) {
-          setSelectedCourseId(cList[0].id);
-        } else {
-          setSelectedCourseId('');
+        if (selectedCourseId !== 'all' && cList && !cList.some((c) => c.id === selectedCourseId)) {
+          setSelectedCourseId('all');
         }
       } catch (err) {
         console.error('Failed to load courses:', err);
@@ -103,21 +107,17 @@ export const SemestersTab: React.FC<SemestersTabProps> = ({ onRefresh }) => {
     loadCourses();
   }, [selectedUnivId]);
 
-  // When selected course changes, load years
+  // Load Years for Filter
   useEffect(() => {
-    if (!selectedCourseId) {
-      setYears([]);
-      setSelectedYearId('');
-      return;
-    }
     const loadYears = async () => {
       try {
-        const yList = await api.adminGetYears({ courseId: selectedCourseId, universityId: selectedUnivId });
+        const yList = await api.adminGetYears({
+          courseId: selectedCourseId !== 'all' ? selectedCourseId : undefined,
+          universityId: selectedUnivId !== 'all' ? selectedUnivId : undefined,
+        });
         setYears(yList || []);
-        if (yList && yList.length > 0) {
-          setSelectedYearId(yList[0].id);
-        } else {
-          setSelectedYearId('');
+        if (selectedYearId !== 'all' && yList && !yList.some((y) => y.id === selectedYearId)) {
+          setSelectedYearId('all');
         }
       } catch (err) {
         console.error('Failed to load years:', err);
@@ -126,19 +126,16 @@ export const SemestersTab: React.FC<SemestersTabProps> = ({ onRefresh }) => {
     loadYears();
   }, [selectedCourseId, selectedUnivId]);
 
-  // Load semesters whenever year changes
+  // Load Semesters from Database
   const loadSemesters = async () => {
     setLoading(true);
     try {
       const data = await api.adminGetSemesters({
-        universityId: selectedUnivId || undefined,
-        courseId: selectedCourseId || undefined,
-        yearId: selectedYearId || undefined,
+        universityId: selectedUnivId !== 'all' ? selectedUnivId : undefined,
+        courseId: selectedCourseId !== 'all' ? selectedCourseId : undefined,
+        yearId: selectedYearId !== 'all' ? selectedYearId : undefined,
       });
-      setSemesters(data || []);
-      setPendingCreates([]);
-      setPendingUpdates(new Map());
-      setPendingDeletes(new Set());
+      setDbSemesters(data || []);
     } catch (err) {
       console.error('Failed to load semesters:', err);
     } finally {
@@ -147,164 +144,267 @@ export const SemestersTab: React.FC<SemestersTabProps> = ({ onRefresh }) => {
   };
 
   useEffect(() => {
-    if (selectedYearId) {
-      loadSemesters();
-    } else {
-      setSemesters([]);
-      setLoading(false);
-    }
+    loadSemesters();
   }, [selectedUnivId, selectedCourseId, selectedYearId]);
 
-  const totalPendingCount = pendingCreates.length + pendingUpdates.size + pendingDeletes.size;
+  // Compute active displayed semesters merged with pending changes
+  const displaySemesters: Semester[] = useMemo(() => {
+    // 1. Filter out pending deleted
+    let list = dbSemesters.filter((s) => !pendingDeletes.includes(s.id));
+
+    // 2. Apply pending updates
+    list = list.map((s) => {
+      const update = pendingUpdates[s.id];
+      if (update) {
+        return {
+          ...s,
+          name: update.name,
+          semester_number: update.semester_number,
+          university_id: update.university_id,
+          course_id: update.course_id,
+          year_id: update.year_id,
+        };
+      }
+      return s;
+    });
+
+    // 3. Append pending creates matching filter
+    const newItems: Semester[] = pendingCreates
+      .filter((ps) => {
+        if (selectedUnivId !== 'all' && ps.university_id && ps.university_id !== selectedUnivId) return false;
+        if (selectedCourseId !== 'all' && ps.course_id && ps.course_id !== selectedCourseId) return false;
+        if (selectedYearId !== 'all' && ps.year_id && ps.year_id !== selectedYearId) return false;
+        return true;
+      })
+      .map((ps) => ({
+        id: ps.tempId,
+        university_id: ps.university_id,
+        course_id: ps.course_id,
+        year_id: ps.year_id,
+        name: ps.name,
+        semester_number: ps.semester_number,
+        slug: `semester-${ps.semester_number}`,
+        display_order: ps.semester_number,
+        is_published: true,
+        created_at: new Date().toISOString(),
+      }));
+
+    let merged = [...newItems, ...list];
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      merged = merged.filter((s) => s.name && s.name.toLowerCase().includes(q));
+    }
+
+    return merged.sort((a, b) => (a.semester_number || 0) - (b.semester_number || 0));
+  }, [
+    dbSemesters,
+    pendingCreates,
+    pendingUpdates,
+    pendingDeletes,
+    selectedUnivId,
+    selectedCourseId,
+    selectedYearId,
+    searchQuery,
+  ]);
+
+  const totalPendingChanges =
+    pendingCreates.length + Object.keys(pendingUpdates).length + pendingDeletes.length;
+
+  // Sync Modal Dropdowns
+  useEffect(() => {
+    if (!modalOpen) return;
+    const loadModalCourses = async () => {
+      try {
+        const cList = await api.adminGetCourses(modalUnivId || undefined);
+        setModalCourses(cList || []);
+        if (cList && cList.length > 0 && (!modalCourseId || !cList.some((c) => c.id === modalCourseId))) {
+          setModalCourseId(cList[0].id);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    loadModalCourses();
+  }, [modalUnivId, modalOpen]);
+
+  useEffect(() => {
+    if (!modalOpen || !modalCourseId) return;
+    const loadModalYears = async () => {
+      try {
+        const yList = await api.adminGetYears({ courseId: modalCourseId, universityId: modalUnivId });
+        setModalYears(yList || []);
+        if (yList && yList.length > 0 && (!modalYearId || !yList.some((y) => y.id === modalYearId))) {
+          setModalYearId(yList[0].id);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    loadModalYears();
+  }, [modalCourseId, modalUnivId, modalOpen]);
 
   const handleOpenAddModal = () => {
-    if (!selectedUnivId || !selectedCourseId || !selectedYearId) {
-      alert('Please select a University, Course, and Year first.');
-      return;
-    }
     setEditingSem(null);
-    const nextNum = semesters.length + 1;
+    const u = selectedUnivId !== 'all' ? selectedUnivId : universities[0]?.id || '';
+    const c = selectedCourseId !== 'all' ? selectedCourseId : courses[0]?.id || '';
+    const y = selectedYearId !== 'all' ? selectedYearId : years[0]?.id || '';
+    setModalUnivId(u);
+    setModalCourseId(c);
+    setModalYearId(y);
+    const nextNum = displaySemesters.length + 1;
     setName(`${nextNum}${nextNum === 1 ? 'st' : nextNum === 2 ? 'nd' : nextNum === 3 ? 'rd' : 'th'} Semester`);
     setSemesterNumber(nextNum);
-    setModalError(null);
     setModalOpen(true);
   };
 
   const handleOpenEditModal = (sem: Semester) => {
     setEditingSem(sem);
+    setModalUnivId(sem.university_id || universities[0]?.id || '');
+    setModalCourseId(sem.course_id || courses[0]?.id || '');
+    setModalYearId(sem.year_id || years[0]?.id || '');
     setName(sem.name);
     setSemesterNumber(sem.semester_number || 1);
-    setModalError(null);
     setModalOpen(true);
   };
 
-  // Stage changes from form submit
-  const handleModalSubmit = (e: React.FormEvent) => {
+  const handleStageSemester = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      setModalError('Semester Name is required');
-      return;
-    }
+    if (!name.trim()) return;
+
+    setSaveSuccessMsg(null);
+    setSaveErrorMsg(null);
 
     if (editingSem) {
-      const semId = editingSem.id;
-      const isPendingNew = pendingCreates.some((c) => c.tempId === semId);
-
-      const updateData = {
-        name: name.trim(),
-        semester_number: Number(semesterNumber),
-      };
-
-      if (isPendingNew) {
+      if (editingSem.id.startsWith('temp_')) {
         setPendingCreates((prev) =>
-          prev.map((c) =>
-            c.tempId === semId ? { ...c, data: { ...c.data, ...updateData } } : c
+          prev.map((item) =>
+            item.tempId === editingSem.id
+              ? {
+                  ...item,
+                  university_id: modalUnivId,
+                  course_id: modalCourseId,
+                  year_id: modalYearId,
+                  name: name.trim(),
+                  semester_number: Number(semesterNumber),
+                }
+              : item
           )
         );
       } else {
-        setPendingUpdates((prev) => {
-          const next = new Map(prev);
-          next.set(semId, updateData);
-          return next;
-        });
+        setPendingUpdates((prev) => ({
+          ...prev,
+          [editingSem.id]: {
+            id: editingSem.id,
+            university_id: modalUnivId,
+            course_id: modalCourseId,
+            year_id: modalYearId,
+            name: name.trim(),
+            semester_number: Number(semesterNumber),
+          },
+        }));
       }
-
-      setSemesters((prev) =>
-        prev.map((s) => (s.id === semId ? { ...s, ...updateData } : s))
-      );
     } else {
-      // New Semester (Pending)
-      const tempId = `temp_sem_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-      const newSemData = {
-        university_id: selectedUnivId,
-        course_id: selectedCourseId,
-        year_id: selectedYearId,
-        name: name.trim(),
-        semester_number: Number(semesterNumber),
-      };
-
-      setPendingCreates((prev) => [...prev, { tempId, data: newSemData }]);
-
-      const newRecord: Semester = {
-        id: tempId,
-        ...newSemData,
-        created_at: new Date().toISOString(),
-      };
-
-      setSemesters((prev) => [...prev, newRecord]);
+      const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+      setPendingCreates((prev) => [
+        {
+          tempId,
+          university_id: modalUnivId,
+          course_id: modalCourseId,
+          year_id: modalYearId,
+          name: name.trim(),
+          semester_number: Number(semesterNumber),
+        },
+        ...prev,
+      ]);
     }
 
     setModalOpen(false);
   };
 
-  // Stage Delete
   const handleDeleteClick = (sem: Semester) => {
     setDeleteConfirmSem(sem);
   };
 
   const handleDeleteConfirm = () => {
     if (!deleteConfirmSem) return;
-    const targetId = deleteConfirmSem.id;
-    const isPendingNew = pendingCreates.some((c) => c.tempId === targetId);
+    setSaveSuccessMsg(null);
+    setSaveErrorMsg(null);
 
-    if (isPendingNew) {
-      setPendingCreates((prev) => prev.filter((c) => c.tempId !== targetId));
+    if (deleteConfirmSem.id.startsWith('temp_')) {
+      setPendingCreates((prev) => prev.filter((p) => p.tempId !== deleteConfirmSem.id));
     } else {
+      setPendingDeletes((prev) => [...prev, deleteConfirmSem.id]);
       setPendingUpdates((prev) => {
-        const next = new Map(prev);
-        next.delete(targetId);
-        return next;
+        const copy = { ...prev };
+        delete copy[deleteConfirmSem.id];
+        return copy;
       });
-      setPendingDeletes((prev) => new Set(prev).add(targetId));
     }
 
-    setSemesters((prev) => prev.filter((s) => s.id !== targetId));
     setDeleteConfirmSem(null);
   };
 
-  // SAVE CHANGES TO REAL DATABASE
-  const handleSaveChanges = async () => {
-    if (totalPendingCount === 0) {
-      setSuccessNotice('No pending changes to save. All semesters are synchronized with the database.');
-      setErrorNotice(null);
-      setTimeout(() => setSuccessNotice(null), 3000);
-      return;
+  const handleDiscardChanges = () => {
+    if (window.confirm('Discard all unsaved pending changes for semesters?')) {
+      setPendingCreates([]);
+      setPendingUpdates({});
+      setPendingDeletes([]);
+      setSaveSuccessMsg(null);
+      setSaveErrorMsg(null);
     }
+  };
+
+  const handleSaveChangesToDatabase = async () => {
+    if (totalPendingChanges === 0) return;
 
     setIsSavingChanges(true);
-    setErrorNotice(null);
-    setSuccessNotice(null);
+    setSaveSuccessMsg(null);
+    setSaveErrorMsg(null);
 
     try {
-      // 1. Process deletions
-      for (const id of Array.from(pendingDeletes)) {
+      // 1. Process pending creates
+      for (const item of pendingCreates) {
+        await api.adminCreateSemester({
+          university_id: item.university_id,
+          course_id: item.course_id,
+          year_id: item.year_id,
+          name: item.name,
+          semester_number: item.semester_number,
+        });
+      }
+
+      // 2. Process pending updates
+      for (const id of Object.keys(pendingUpdates)) {
+        const item = pendingUpdates[id];
+        await api.adminUpdateSemester(id, {
+          university_id: item.university_id,
+          course_id: item.course_id,
+          year_id: item.year_id,
+          name: item.name,
+          semester_number: item.semester_number,
+        });
+      }
+
+      // 3. Process pending deletes
+      for (const id of pendingDeletes) {
         await api.adminDeleteSemester(id);
       }
 
-      // 2. Process updates
-      for (const [id, data] of Array.from(pendingUpdates.entries())) {
-        await api.adminUpdateSemester(id, data);
-      }
-
-      // 3. Process creations
-      for (const item of pendingCreates) {
-        await api.adminCreateSemester(item.data);
-      }
-
-      // Confirmed by database!
+      // 4. Reset pending state
       setPendingCreates([]);
-      setPendingUpdates(new Map());
-      setPendingDeletes(new Set());
+      setPendingUpdates({});
+      setPendingDeletes([]);
 
-      // Refresh data from real database
+      // 5. Reload from DB
       await loadSemesters();
       onRefresh();
 
-      setSuccessNotice('Changes saved successfully');
-      setTimeout(() => setSuccessNotice(null), 5000);
+      setSaveSuccessMsg('Semesters saved successfully to the database!');
+      setTimeout(() => setSaveSuccessMsg(null), 5000);
     } catch (err: any) {
-      console.error('Failed to save semesters:', err);
-      setErrorNotice(err.message || 'Database save failed. Please check connection and try again.');
+      console.error('Error saving semesters to database:', err);
+      setSaveErrorMsg(err.message || 'Failed to save semesters to the database.');
     } finally {
       setIsSavingChanges(false);
     }
@@ -317,37 +417,42 @@ export const SemestersTab: React.FC<SemestersTabProps> = ({ onRefresh }) => {
         <div>
           <h2 className="text-xl font-bold text-slate-900 font-serif">Semester Management</h2>
           <p className="text-xs text-slate-500 mt-1">
-            Configure semesters connected to each academic year, course, and university.
+            Manage semesters (Semester 1, Semester 2, etc.) for each academic year.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Clear "Save Changes" Button */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {totalPendingChanges > 0 && (
+            <button
+              onClick={handleDiscardChanges}
+              disabled={isSavingChanges}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+              <span>Discard Changes</span>
+            </button>
+          )}
+
           <button
-            type="button"
-            onClick={handleSaveChanges}
-            disabled={isSavingChanges}
-            className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-bold text-xs shadow-xs transition-all cursor-pointer ${
-              totalPendingCount > 0
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-500/30 animate-pulse'
-                : 'bg-slate-900 hover:bg-slate-800 text-white'
-            } disabled:opacity-50`}
-            title="Save pending changes to database"
+            onClick={handleSaveChangesToDatabase}
+            disabled={isSavingChanges || totalPendingChanges === 0}
+            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer ${
+              totalPendingChanges > 0
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md ring-2 ring-emerald-400/30 animate-pulse'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+            }`}
           >
             {isSavingChanges ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin text-white" />
-                <span>Saving Changes...</span>
+                <span>Saving to Database...</span>
               </>
             ) : (
               <>
                 <Save className="w-4 h-4" />
-                <span>Save Changes</span>
-                {totalPendingCount > 0 && (
-                  <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-white text-emerald-800 font-extrabold">
-                    {totalPendingCount}
-                  </span>
-                )}
+                <span>
+                  Save Changes {totalPendingChanges > 0 ? `(${totalPendingChanges} pending)` : ''}
+                </span>
               </>
             )}
           </button>
@@ -362,152 +467,187 @@ export const SemestersTab: React.FC<SemestersTabProps> = ({ onRefresh }) => {
         </div>
       </div>
 
-      {/* Notifications */}
-      {successNotice && (
-        <div className="flex items-center gap-2 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-xl animate-fade-in shadow-xs">
+      {/* Success / Error Feedback */}
+      {saveSuccessMsg && (
+        <div className="flex items-center gap-2 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-2xl animate-fade-in shadow-2xs">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{successNotice}</span>
+          <span>{saveSuccessMsg}</span>
         </div>
       )}
 
-      {errorNotice && (
-        <div className="flex items-center gap-2 p-3.5 bg-red-50 border border-red-200 text-red-800 text-xs font-semibold rounded-xl animate-fade-in shadow-xs">
+      {saveErrorMsg && (
+        <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-200 text-red-800 text-xs font-semibold rounded-2xl animate-fade-in shadow-2xs">
           <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-          <span>{errorNotice}</span>
+          <span>{saveErrorMsg}</span>
         </div>
       )}
 
-      {/* Select Cascading Filters */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-        <div>
-          <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1 flex items-center gap-1">
-            <Building2 className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Select University</span>
-          </label>
-          <select
-            value={selectedUnivId}
-            onChange={(e) => setSelectedUnivId(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
-          >
-            {universities.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
+      {/* Pending status notification */}
+      {totalPendingChanges > 0 && !saveSuccessMsg && !saveErrorMsg && (
+        <div className="flex items-center justify-between gap-2 p-3.5 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium rounded-xl">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+            <span>
+              You have <strong>{totalPendingChanges}</strong> unsaved pending change(s). Click <strong>"Save Changes"</strong> to commit them permanently to the database.
+            </span>
+          </div>
         </div>
+      )}
 
-        <div>
-          <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1 flex items-center gap-1">
-            <GraduationCap className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Select Course</span>
-          </label>
-          <select
-            value={selectedCourseId}
-            onChange={(e) => setSelectedCourseId(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
-          >
-            {courses.length === 0 ? (
-              <option value="">No courses in university</option>
-            ) : (
-              courses.map((c) => (
+      {/* Cascading Filter Bar */}
+      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+              <span>University</span>
+            </label>
+            <select
+              value={selectedUnivId}
+              onChange={(e) => setSelectedUnivId(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 bg-white"
+            >
+              <option value="all">🌐 All Universities</option>
+              {universities.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <GraduationCap className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Course</span>
+            </label>
+            <select
+              value={selectedCourseId}
+              onChange={(e) => setSelectedCourseId(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 bg-white"
+            >
+              <option value="all">📚 All Courses</option>
+              {courses.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name} ({c.code})
                 </option>
-              ))
-            )}
-          </select>
-        </div>
+              ))}
+            </select>
+          </div>
 
-        <div>
-          <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1 flex items-center gap-1">
-            <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Select Year</span>
-          </label>
-          <select
-            value={selectedYearId}
-            onChange={(e) => setSelectedYearId(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
-          >
-            {years.length === 0 ? (
-              <option value="">No years in course</option>
-            ) : (
-              years.map((y) => (
+          <div>
+            <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Year</span>
+            </label>
+            <select
+              value={selectedYearId}
+              onChange={(e) => setSelectedYearId(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 bg-white"
+            >
+              <option value="all">🗓️ All Years</option>
+              {years.map((y) => (
                 <option key={y.id} value={y.id}>
                   {y.name}
                 </option>
-              ))
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-200/60">
+          <div className="relative flex-1 max-w-md">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search semesters..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-8 py-2 bg-white rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             )}
-          </select>
+          </div>
+
+          <div className="text-xs text-slate-600 font-semibold shrink-0">
+            Showing <span className="text-indigo-600 font-bold">{displaySemesters.length}</span> semester(s)
+          </div>
         </div>
       </div>
 
-      {/* Semester List */}
+      {/* Grid */}
       {loading ? (
-        <div className="text-center py-8 text-slate-400 text-xs flex items-center justify-center gap-2">
-          <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+        <div className="text-center py-12 text-slate-400 text-xs flex items-center justify-center gap-2">
+          <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
           <span>Loading semesters...</span>
         </div>
-      ) : semesters.length === 0 ? (
-        <div className="text-center py-10 border border-dashed border-slate-300 rounded-2xl p-6">
-          <Layers className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-          <h3 className="text-sm font-semibold text-slate-700">No Semesters Configured</h3>
-          <p className="text-xs text-slate-500 mt-1">
-            Click "Add Semester" above to create semesters for this year.
-          </p>
+      ) : displaySemesters.length === 0 ? (
+        <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-2xl p-6 space-y-3">
+          <Layers className="w-12 h-12 text-slate-300 mx-auto" />
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700">No Semesters Found</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Click "Add Semester" above to create semesters for this course.
+            </p>
+          </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {semesters.map((sem) => {
-            const isPendingNew = pendingCreates.some((c) => c.tempId === sem.id);
-            const isPendingEdited = pendingUpdates.has(sem.id);
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {displaySemesters.map((s) => {
+            const isPendingNew = s.id.startsWith('temp_');
+            const isPendingUpdated = !!pendingUpdates[s.id];
 
             return (
               <div
-                key={sem.id}
-                className={`rounded-2xl border p-4 flex items-center justify-between gap-4 transition-all ${
+                key={s.id}
+                className={`p-4 rounded-xl border transition-all flex items-center justify-between ${
                   isPendingNew
-                    ? 'border-emerald-300 bg-emerald-50/40 ring-1 ring-emerald-400/40'
-                    : isPendingEdited
-                    ? 'border-amber-300 bg-amber-50/40 ring-1 ring-amber-400/40'
-                    : 'bg-slate-50 border-slate-200'
+                    ? 'bg-emerald-50/70 border-emerald-300'
+                    : isPendingUpdated
+                    ? 'bg-amber-50/70 border-amber-300'
+                    : 'border-slate-200 bg-slate-50/50 hover:bg-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
-                    Sem {sem.semester_number}
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
+                    {s.semester_number || '1'}
                   </div>
                   <div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <h3 className="font-bold text-base text-slate-900 font-serif">
-                        {sem.name}
-                      </h3>
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="text-xs font-bold text-slate-900">{s.name}</h4>
                       {isPendingNew && (
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          Pending Save
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                          New
                         </span>
                       )}
-                      {isPendingEdited && (
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                          Modified
+                      {isPendingUpdated && (
+                        <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                          Edited
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-500">Semester #{sem.semester_number}</p>
+                    <p className="text-[11px] text-slate-500">Semester #{s.semester_number}</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => handleOpenEditModal(sem)}
-                    className="p-2 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-colors cursor-pointer"
+                    onClick={() => handleOpenEditModal(s)}
+                    className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                     title="Edit Semester"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => handleDeleteClick(sem)}
-                    className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-200 transition-colors cursor-pointer"
+                    onClick={() => handleDeleteClick(s)}
+                    className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                     title="Delete Semester"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -532,10 +672,10 @@ export const SemestersTab: React.FC<SemestersTabProps> = ({ onRefresh }) => {
                 Delete Semester?
               </h3>
               <p className="text-xs text-slate-600">
-                Are you sure you want to remove <span className="font-bold text-slate-900">{deleteConfirmSem.name}</span> (Semester #{deleteConfirmSem.semester_number})?
+                Are you sure you want to delete <span className="font-bold text-slate-900">{deleteConfirmSem.name}</span> (Semester #{deleteConfirmSem.semester_number})?
               </p>
               <p className="text-[11px] text-amber-600 font-medium mt-1">
-                This item will be queued for deletion. Click "Save Changes" to commit deletion permanently to the database.
+                This will be marked as a pending deletion until you click "Save Changes".
               </p>
             </div>
 
@@ -550,9 +690,9 @@ export const SemestersTab: React.FC<SemestersTabProps> = ({ onRefresh }) => {
               <button
                 type="button"
                 onClick={handleDeleteConfirm}
-                className="w-1/2 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md transition-colors cursor-pointer"
+                className="w-1/2 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
               >
-                Remove Semester
+                <span>Confirm Delete</span>
               </button>
             </div>
           </div>
@@ -562,18 +702,72 @@ export const SemestersTab: React.FC<SemestersTabProps> = ({ onRefresh }) => {
       {/* Add / Edit Modal */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200 space-y-4">
-            <h3 className="text-lg font-bold text-slate-900 font-serif">
-              {editingSem ? 'Edit Semester' : 'Add Semester'}
-            </h3>
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-lg font-bold text-slate-900 font-serif">
+                {editingSem ? 'Edit Semester' : 'Add Semester'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-            {modalError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-800 text-xs">
-                {modalError}
+            <form onSubmit={handleStageSemester} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  University *
+                </label>
+                <select
+                  value={modalUnivId}
+                  onChange={(e) => setModalUnivId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 bg-white"
+                >
+                  {universities.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-            )}
 
-            <form onSubmit={handleModalSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Course *
+                </label>
+                <select
+                  value={modalCourseId}
+                  onChange={(e) => setModalCourseId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 bg-white"
+                >
+                  {modalCourses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Academic Year *
+                </label>
+                <select
+                  value={modalYearId}
+                  onChange={(e) => setModalYearId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 bg-white"
+                >
+                  {modalYears.map((y) => (
+                    <option key={y.id} value={y.id}>
+                      {y.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Semester Name *
@@ -581,7 +775,7 @@ export const SemestersTab: React.FC<SemestersTabProps> = ({ onRefresh }) => {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. 1st Semester, 2nd Semester"
+                  placeholder="e.g. 1st Semester, 2nd Semester..."
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500"
@@ -595,7 +789,7 @@ export const SemestersTab: React.FC<SemestersTabProps> = ({ onRefresh }) => {
                 <input
                   type="number"
                   min={1}
-                  max={20}
+                  max={12}
                   required
                   value={semesterNumber}
                   onChange={(e) => setSemesterNumber(Number(e.target.value))}
@@ -603,19 +797,19 @@ export const SemestersTab: React.FC<SemestersTabProps> = ({ onRefresh }) => {
                 />
               </div>
 
-              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-medium cursor-pointer"
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs cursor-pointer"
                 >
-                  <span>{editingSem ? 'Apply Edit' : 'Add to List'}</span>
+                  <span>{editingSem ? 'Update in Pending' : 'Add to Pending'}</span>
                 </button>
               </div>
             </form>
