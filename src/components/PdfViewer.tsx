@@ -56,6 +56,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const contentWrapperRef = useRef<HTMLDivElement>(null);
   const pageContainerRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const canvasRefs = useRef<{ [key: number]: HTMLCanvasElement | null }>({});
   const renderedPagesRef = useRef<Set<number>>(new Set());
@@ -139,7 +140,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     if (!containerRef.current || !viewportWidth) return 1.0;
     const containerWidth = containerRef.current.clientWidth;
     const isMobile = window.innerWidth < 640;
-    const availableWidth = isMobile ? containerWidth : Math.max(containerWidth - 16, 200);
+    const paddingOffset = isMobile ? 8 : 16;
+    const availableWidth = Math.max(containerWidth - paddingOffset, 180);
     const fitScale = availableWidth / viewportWidth;
     return Number(fitScale.toFixed(3));
   }, []);
@@ -161,7 +163,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       mode: 'width' | 'custom' = 'custom'
     ) => {
       const container = containerRef.current;
-      const clampedScale = Math.min(Math.max(Number(newScale.toFixed(3)), 0.5), 4.5);
+      const clampedScale = Math.min(Math.max(Number(newScale.toFixed(3)), 0.4), 4.5);
 
       if (!container || clampedScale === scaleRef.current) {
         setScale(clampedScale);
@@ -513,7 +515,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           const fitScale = getFitWidthScale(firstDim.width);
           
           if (Math.abs(scaleRef.current - fitScale) < 0.15) {
-            setZoomWithAnchor(fitScale * 2.0, { clientX: t.clientX, clientY: t.clientY });
+            setZoomWithAnchor(fitScale * 2.2, { clientX: t.clientX, clientY: t.clientY });
           } else {
             setZoomWithAnchor(fitScale, undefined, 'width');
           }
@@ -533,7 +535,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         if (touchStateRef.current.initialDistance > 0) {
           const ratio = dist / touchStateRef.current.initialDistance;
           const targetScale = Math.min(
-            Math.max(touchStateRef.current.initialScale * ratio, 0.5),
+            Math.max(touchStateRef.current.initialScale * ratio, 0.4),
             4.5
           );
 
@@ -565,7 +567,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const factor = Math.exp(-e.deltaY * 0.006);
-        const newScale = Math.min(Math.max(scaleRef.current * factor, 0.5), 4.5);
+        const newScale = Math.min(Math.max(scaleRef.current * factor, 0.4), 4.5);
         setZoomWithAnchor(newScale, { clientX: e.clientX, clientY: e.clientY });
       }
     };
@@ -731,7 +733,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           <div className="flex items-center bg-[#282a2d] px-0.5 sm:px-1 py-0.5 rounded-md border border-[#444746]">
             <button
               onClick={zoomOut}
-              disabled={scale <= 0.5 || loading}
+              disabled={scale <= 0.4 || loading}
               className="p-0.5 sm:p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
               title="Zoom Out (-)"
             >
@@ -830,12 +832,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       </header>
 
       {/* ============================================================
-          MAIN VIEWER CANVAS AREA (Lag-free 60fps scrolling & native mobile feel)
+          MAIN VIEWER CANVAS AREA (Seamless Left/Right & Side-Zoom Panning)
       ============================================================ */}
       <main
         ref={containerRef}
         onScroll={handleScroll}
-        className="relative flex-1 w-full bg-[#202124] overflow-y-auto overflow-x-auto p-0 m-0 flex flex-col items-center select-none"
+        className="relative flex-1 w-full bg-[#202124] overflow-x-auto overflow-y-auto p-0 m-0 select-none block"
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
@@ -858,7 +860,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         )}
 
         {loading && (
-          <div className="flex flex-col items-center justify-center my-auto text-slate-400 gap-3 py-20">
+          <div className="flex flex-col items-center justify-center min-h-[50vh] text-slate-400 gap-3 py-20">
             <Loader2 className="w-8 h-8 text-[#8ab4f8] animate-spin" />
             <p className="text-xs sm:text-sm font-medium text-slate-300 animate-pulse">
               Loading high-resolution PDF...
@@ -867,7 +869,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         )}
 
         {error && !loading && (
-          <div className="max-w-md w-full my-auto text-center p-6 bg-[#282a2d] border border-[#3c4043] rounded-xl space-y-4 shadow-xl">
+          <div className="max-w-md w-full mx-auto my-12 text-center p-6 bg-[#282a2d] border border-[#3c4043] rounded-xl space-y-4 shadow-xl">
             <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
               <AlertCircle className="w-6 h-6" />
             </div>
@@ -895,9 +897,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           </div>
         )}
 
-        {/* Continuous Centered Pages Stack */}
+        {/* Continuous Centered & Side-Pannable Pages Stack */}
         {!loading && !error && pdfDoc && (
-          <div className="w-full min-w-fit flex flex-col items-center gap-2 sm:gap-4 py-2 sm:py-4 m-0 px-0 sm:px-1">
+          <div
+            ref={contentWrapperRef}
+            className="min-w-full inline-flex flex-col items-center gap-2 sm:gap-4 py-2 sm:py-4 px-1 sm:px-2"
+          >
             {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNum) => {
               const baseDim = basePageDimensions[pageNum] || { width: 612, height: 792 };
               const isRotated = rotation === 90 || rotation === 270;
