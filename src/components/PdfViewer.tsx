@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useLayoutEffect } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import {
   ChevronLeft,
@@ -22,7 +22,6 @@ import {
   QuestionPaperPdfOptions,
 } from '../utils/clientPdfGenerator';
 
-// Configure pdf.js worker using standard CDN matching the version
 try {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '4.10.38'}/legacy/build/pdf.worker.min.mjs`;
 } catch (e) {
@@ -40,6 +39,11 @@ interface PdfViewerProps {
   showDownloadButton?: boolean;
 }
 
+interface PageDimension {
+  width: number;
+  height: number;
+}
+
 export const PdfViewer: React.FC<PdfViewerProps> = ({
   url,
   title = 'Examination Question Paper',
@@ -47,22 +51,19 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   downloadUrl,
   downloadFilename,
   className = '',
-  minHeight = '650px',
+  minHeight = '620px',
   showDownloadButton = true,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const pagesContainerRef = useRef<HTMLDivElement>(null);
-  const pageRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
+  const pageContainerRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const canvasRefs = useRef<{ [key: number]: HTMLCanvasElement | null }>({});
+  const activeRenderTasks = useRef<{ [key: number]: any }>({});
 
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
-  
-  // High-performance scale state
   const [scale, setScale] = useState(1.0);
-  const [renderedScale, setRenderedScale] = useState(1.0);
   const [fitMode, setFitMode] = useState<'width' | 'custom'>('width');
   const [rotation, setRotation] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -70,44 +71,30 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [generatedBlobUrl, setGeneratedBlobUrl] = useState<string | null>(null);
   const [jumpPageInput, setJumpPageInput] = useState('1');
+  const [basePageDimensions, setBasePageDimensions] = useState<{ [key: number]: PageDimension }>({});
 
-  // Debounced High-Res re-render timer
-  const renderDebounceTimer = useRef<any>(null);
+  const scaleRef = useRef<number>(1.0);
+  scaleRef.current = scale;
 
-  // Gesture tracking state for 60fps buttery smooth focal zoom
-  const touchStateRef = useRef<{
-    isPinching: boolean;
-    initialDistance: number;
-    initialScale: number;
-    initialMidX: number;
-    initialMidY: number;
-    initialScrollLeft: number;
-    initialScrollTop: number;
-    lastTapTime: number;
-    lastTapX: number;
-    lastTapY: number;
-  }>({
-    isPinching: false,
-    initialDistance: 0,
-    initialScale: 1.0,
-    initialMidX: 0,
-    initialMidY: 0,
-    initialScrollLeft: 0,
-    initialScrollTop: 0,
-    lastTapTime: 0,
-    lastTapX: 0,
-    lastTapY: 0,
-  });
+  const anchorRef = useRef<{
+    focalRatioX: number;
+    focalRatioY: number;
+    viewportFocalX: number;
+    viewportFocalY: number;
+  } | null>(null);
 
-  // Clean up any generated blob url on unmount
   useEffect(() => {
     return () => {
       if (generatedBlobUrl) {
         URL.revokeObjectURL(generatedBlobUrl);
       }
-      if (renderDebounceTimer.current) {
-        clearTimeout(renderDebounceTimer.current);
-      }
+      Object.values(activeRenderTasks.current).forEach((task) => {
+        try {
+          task?.cancel();
+        } catch {
+          // ignore
+        }
+      });
     };
   }, [generatedBlobUrl]);
 
@@ -115,38 +102,65 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const effectiveDownloadFilename =
     downloadFilename || (title ? `${title.replace(/\s+/g, '_')}.pdf` : 'QuestionPaper.pdf');
 
-  // Calculate default fit-width scale based on container size
   const getFitWidthScale = useCallback((viewportWidth: number) => {
-    if (!containerRef.current) return 1.0;
+    if (!containerRef.current || !viewportWidth) return 1.0;
     const containerWidth = containerRef.current.clientWidth;
-    const padding = containerWidth < 640 ? 16 : 48;
-    const availableWidth = Math.max(containerWidth - padding, 260);
+    const padding = containerWidth < 480 ? 16 : containerWidth < 768 ? 32 : 48;
+    const availableWidth = Math.max(containerWidth - padding, 240);
     const targetScale = availableWidth / viewportWidth;
     return Number(targetScale.toFixed(2));
   }, []);
 
-  // Debounced update to re-rasterize canvas at high resolution once pinch/zoom stops
-  const queueHighResRender = useCallback((targetScale: number) => {
-    if (renderDebounceTimer.current) {
-      clearTimeout(renderDebounceTimer.current);
-    }
-    renderDebounceTimer.current = setTimeout(() => {
-      setRenderedScale(targetScale);
-    }, 200);
-  }, []);
+  const setZoomWithAnchor = useCallback(
+    (
+      newScale: number,
+      focalPoint?: { clientX: number; clientY: number },
+      mode: 'width' | 'custom' = 'custom'
+    ) => {
+      const container = containerRef.current;
+      const clampedScale = Math.min(Math.max(Number(newScale.toFixed(2)), 0.35), 3.5);
 
-  // Set zoom scale smoothly
-  const applyZoom = useCallback(
-    (newScale: number, isCustom = true) => {
-      const clamped = Math.min(Math.max(Number(newScale.toFixed(2)), 0.4), 3.5);
-      setScale(clamped);
-      if (isCustom) setFitMode('custom');
-      queueHighResRender(clamped);
+      if (!container || clampedScale === scaleRef.current) {
+        setScale(clampedScale);
+        setFitMode(mode);
+        return;
+      }
+
+      const rect = container.getBoundingClientRect();
+      const currentScale = scaleRef.current;
+
+      let viewportX = focalPoint ? focalPoint.clientX - rect.left : container.clientWidth / 2;
+      let viewportY = focalPoint ? focalPoint.clientY - rect.top : container.clientHeight / 2;
+
+      viewportX = Math.max(0, Math.min(viewportX, container.clientWidth));
+      viewportY = Math.max(0, Math.min(viewportY, container.clientHeight));
+
+      const docX = (container.scrollLeft + viewportX) / currentScale;
+      const docY = (container.scrollTop + viewportY) / currentScale;
+
+      anchorRef.current = {
+        focalRatioX: docX,
+        focalRatioY: docY,
+        viewportFocalX: viewportX,
+        viewportFocalY: viewportY,
+      };
+
+      setFitMode(mode);
+      setScale(clampedScale);
     },
-    [queueHighResRender]
+    []
   );
 
-  // Load PDF Document
+  useLayoutEffect(() => {
+    if (anchorRef.current && containerRef.current) {
+      const { focalRatioX, focalRatioY, viewportFocalX, viewportFocalY } = anchorRef.current;
+      const container = containerRef.current;
+      container.scrollLeft = Math.max(0, focalRatioX * scale - viewportFocalX);
+      container.scrollTop = Math.max(0, focalRatioY * scale - viewportFocalY);
+      anchorRef.current = null;
+    }
+  }, [scale]);
+
   const loadDocument = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -234,11 +248,18 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       setCurrentPage(1);
       setJumpPageInput('1');
 
-      const firstPage = await loadedPdf.getPage(1);
-      const unscaledViewport = firstPage.getViewport({ scale: 1.0, rotation: 0 });
-      const initialScale = getFitWidthScale(unscaledViewport.width);
+      const dims: { [key: number]: PageDimension } = {};
+      for (let i = 1; i <= loadedPdf.numPages; i++) {
+        const p = await loadedPdf.getPage(i);
+        const vp = p.getViewport({ scale: 1.0, rotation: 0 });
+        dims[i] = { width: vp.width, height: vp.height };
+      }
+      setBasePageDimensions(dims);
+
+      const firstPageVp = dims[1] || { width: 612, height: 792 };
+      const initialScale = getFitWidthScale(firstPageVp.width);
       setScale(initialScale);
-      setRenderedScale(initialScale);
+      scaleRef.current = initialScale;
       setLoading(false);
     } catch (err: any) {
       console.error('[PdfViewer] PDF.js parsing error:', err);
@@ -251,27 +272,31 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     loadDocument();
   }, [loadDocument]);
 
-  // Render high-quality canvas
   const renderSinglePage = useCallback(
-    async (pageNum: number, pdf: any, renderScale: number) => {
+    async (pageNum: number, pdf: any, currentScale: number, currentRotation: number) => {
       const canvas = canvasRefs.current[pageNum];
       if (!pdf || !canvas) return;
 
+      if (activeRenderTasks.current[pageNum]) {
+        try {
+          activeRenderTasks.current[pageNum].cancel();
+        } catch {
+          // ignore
+        }
+      }
+
       try {
         const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: currentScale, rotation: currentRotation });
         const context = canvas.getContext('2d', { alpha: false });
         if (!context) return;
 
-        const viewport = page.getViewport({ scale: renderScale, rotation });
-        
-        // High-DPI / Retina clamp
         const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1.5), 2.5);
-
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
-        canvas.style.height = `${Math.floor(viewport.height)}px`;
 
         canvas.width = Math.floor(viewport.width * dpr);
         canvas.height = Math.floor(viewport.height * dpr);
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        canvas.style.height = `${Math.floor(viewport.height)}px`;
 
         context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
@@ -280,184 +305,109 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           viewport: viewport,
         };
 
-        await page.render(renderContext).promise;
+        const renderTask = page.render(renderContext);
+        activeRenderTasks.current[pageNum] = renderTask;
+        await renderTask.promise;
       } catch (err: any) {
         if (err?.name !== 'RenderingCancelledException') {
           console.error(`[PdfViewer] Page ${pageNum} render error:`, err);
         }
+      } finally {
+        activeRenderTasks.current[pageNum] = null;
       }
     },
-    [rotation]
+    []
   );
 
-  // Re-rasterize high-res canvas when renderedScale changes
   useEffect(() => {
     if (pdfDoc && totalPages > 0) {
       for (let p = 1; p <= totalPages; p++) {
-        renderSinglePage(p, pdfDoc, renderedScale);
+        renderSinglePage(p, pdfDoc, scale, rotation);
       }
     }
-  }, [pdfDoc, totalPages, renderedScale, rotation, renderSinglePage]);
+  }, [pdfDoc, totalPages, scale, rotation, renderSinglePage]);
 
-  // Track visible page on vertical scroll
-  const handleScroll = () => {
-    if (!containerRef.current || totalPages <= 1) return;
-    const containerTop = containerRef.current.getBoundingClientRect().top;
-    
-    let visiblePage = 1;
+  const handleScroll = useCallback(() => {
+    const container = containerRef.current;
+    if (!container || totalPages <= 1) return;
+
+    const containerTop = container.scrollTop;
+    const containerHeight = container.clientHeight;
+    const viewCenter = containerTop + containerHeight * 0.35;
+
+    let bestPage = 1;
+    let minDistance = Infinity;
+
     for (let p = 1; p <= totalPages; p++) {
-      const el = pageRefs.current[p];
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        if (rect.top - containerTop <= 250) {
-          visiblePage = p;
+      const pageEl = pageContainerRefs.current[p];
+      if (pageEl) {
+        const pageTop = pageEl.offsetTop;
+        const pageBottom = pageTop + pageEl.offsetHeight;
+
+        if (viewCenter >= pageTop && viewCenter <= pageBottom) {
+          bestPage = p;
+          break;
+        }
+
+        const distance = Math.abs(pageTop - viewCenter);
+        if (distance < minDistance) {
+          minDistance = distance;
+          bestPage = p;
         }
       }
     }
-    if (visiblePage !== currentPage) {
-      setCurrentPage(visiblePage);
-      setJumpPageInput(String(visiblePage));
-    }
-  };
 
-  const scrollToPage = (pageNum: number) => {
-    const el = pageRefs.current[pageNum];
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (bestPage !== currentPage) {
+      setCurrentPage(bestPage);
+      setJumpPageInput(String(bestPage));
+    }
+  }, [totalPages, currentPage]);
+
+  const scrollToPage = useCallback((pageNum: number) => {
+    const container = containerRef.current;
+    const targetEl = pageContainerRefs.current[pageNum];
+    if (container && targetEl) {
+      const targetTop = Math.max(0, targetEl.offsetTop - 16);
+      container.scrollTo({
+        top: targetTop,
+        behavior: 'smooth',
+      });
       setCurrentPage(pageNum);
       setJumpPageInput(String(pageNum));
     }
-  };
+  }, []);
 
-  // Window resize handler
-  useEffect(() => {
-    const handleResize = () => {
-      if (!pdfDoc || fitMode !== 'width') return;
-      pdfDoc.getPage(1).then((page: any) => {
-        const vp = page.getViewport({ scale: 1.0, rotation });
-        const newScale = getFitWidthScale(vp.width);
-        setScale(newScale);
-        setRenderedScale(newScale);
-      });
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [pdfDoc, rotation, fitMode, getFitWidthScale]);
-
-  // 60FPS Hardware-Accelerated Pinch-to-Zoom & Pan for Mobile Touch
+  // Wheel zoom
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    let currentScaleVal = scale;
-    currentScaleVal = scale;
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        // Multi-touch pinch start
-        const t1 = e.touches[0];
-        const t2 = e.touches[1];
-        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-        const rect = container.getBoundingClientRect();
-
-        touchStateRef.current.isPinching = true;
-        touchStateRef.current.initialDistance = dist;
-        touchStateRef.current.initialScale = scale;
-        touchStateRef.current.initialMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
-        touchStateRef.current.initialMidY = (t1.clientY + t2.clientY) / 2 - rect.top;
-        touchStateRef.current.initialScrollLeft = container.scrollLeft;
-        touchStateRef.current.initialScrollTop = container.scrollTop;
-      } else if (e.touches.length === 1) {
-        // Double-tap zoom detection
-        const now = Date.now();
-        const touch = e.touches[0];
-        const lastTime = touchStateRef.current.lastTapTime;
-        const lastX = touchStateRef.current.lastTapX;
-        const lastY = touchStateRef.current.lastTapY;
-        const dist = Math.hypot(touch.clientX - lastX, touch.clientY - lastY);
-
-        if (now - lastTime < 300 && dist < 35) {
-          e.preventDefault();
-          if (scale > 1.2) {
-            handleFitWidth();
-          } else {
-            applyZoom(scale * 1.6);
-          }
-          touchStateRef.current.lastTapTime = 0;
-        } else {
-          touchStateRef.current.lastTapTime = now;
-          touchStateRef.current.lastTapX = touch.clientX;
-          touchStateRef.current.lastTapY = touch.clientY;
-        }
-      }
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && touchStateRef.current.isPinching) {
-        e.preventDefault(); // Prevent browser screen zoom
-
-        const t1 = e.touches[0];
-        const t2 = e.touches[1];
-        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-
-        if (touchStateRef.current.initialDistance > 0) {
-          const ratio = dist / touchStateRef.current.initialDistance;
-          const newScale = Math.min(
-            Math.max(touchStateRef.current.initialScale * ratio, 0.4),
-            3.5
-          );
-
-          // Instant 60fps CSS transform feedback
-          setScale(Number(newScale.toFixed(2)));
-          setFitMode('custom');
-
-          // Smooth focal pan adjustment so fingers stay centered on the pinch point
-          const scaleChange = newScale / touchStateRef.current.initialScale;
-          const midX = touchStateRef.current.initialMidX;
-          const midY = touchStateRef.current.initialMidY;
-
-          container.scrollLeft =
-            (touchStateRef.current.initialScrollLeft + midX) * scaleChange - midX;
-          container.scrollTop =
-            (touchStateRef.current.initialScrollTop + midY) * scaleChange - midY;
-        }
-      }
-    };
-
-    const handleTouchEnd = (e: TouchEvent) => {
-      if (touchStateRef.current.isPinching && e.touches.length < 2) {
-        touchStateRef.current.isPinching = false;
-        touchStateRef.current.initialDistance = 0;
-        // High-res re-render when pinch finishes
-        queueHighResRender(scale);
-      }
-    };
-
-    // Wheel zoom with Ctrl or trackpad pinch on computer
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        const delta = -e.deltaY * 0.01;
-        const newScale = Math.min(Math.max(scale + delta, 0.4), 3.5);
-        applyZoom(newScale);
+        const delta = -e.deltaY * 0.008;
+        const newScale = Math.min(Math.max(scaleRef.current + delta, 0.35), 3.5);
+        setZoomWithAnchor(newScale, { clientX: e.clientX, clientY: e.clientY });
       }
     };
 
-    container.addEventListener('touchstart', handleTouchStart, { passive: false });
-    container.addEventListener('touchmove', handleTouchMove, { passive: false });
-    container.addEventListener('touchend', handleTouchEnd);
-    container.addEventListener('touchcancel', handleTouchEnd);
     container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [setZoomWithAnchor]);
 
-    return () => {
-      container.removeEventListener('touchstart', handleTouchStart);
-      container.removeEventListener('touchmove', handleTouchMove);
-      container.removeEventListener('touchend', handleTouchEnd);
-      container.removeEventListener('touchcancel', handleTouchEnd);
-      container.removeEventListener('wheel', handleWheel);
+  // Resize listener
+  useEffect(() => {
+    const handleResize = () => {
+      if (!pdfDoc || fitMode !== 'width') return;
+      const firstDim = basePageDimensions[1] || { width: 612, height: 792 };
+      const newScale = getFitWidthScale(firstDim.width);
+      setScale(newScale);
+      scaleRef.current = newScale;
     };
-  }, [scale, applyZoom, queueHighResRender]);
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [pdfDoc, fitMode, basePageDimensions, getFitWidthScale]);
 
   const prevPage = () => {
     if (currentPage > 1) scrollToPage(currentPage - 1);
@@ -477,21 +427,17 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
   };
 
-  // Instant Button Zoom Handlers
-  const zoomIn = () => applyZoom(scale + 0.2);
-  const zoomOut = () => applyZoom(scale - 0.2);
+  const zoomIn = () => setZoomWithAnchor(scale + 0.15);
+  const zoomOut = () => setZoomWithAnchor(scale - 0.15);
 
-  const handleFitWidth = async () => {
+  const handleFitWidth = () => {
     if (!pdfDoc) return;
-    setFitMode('width');
-    const page = await pdfDoc.getPage(1);
-    const vp = page.getViewport({ scale: 1.0, rotation });
-    const fitScale = getFitWidthScale(vp.width);
-    applyZoom(fitScale, false);
+    const firstDim = basePageDimensions[1] || { width: 612, height: 792 };
+    const fitScale = getFitWidthScale(firstDim.width);
+    setZoomWithAnchor(fitScale, undefined, 'width');
   };
 
-  const handleResetZoom100 = () => applyZoom(1.0);
-
+  const handleResetZoom100 = () => setZoomWithAnchor(1.0);
   const rotateClockwise = () => setRotation((r) => (r + 90) % 360);
 
   const toggleFullScreen = () => {
@@ -515,66 +461,159 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
   };
 
-  // Compute live visual CSS scale ratio relative to rendered canvas resolution
-  const visualScaleFactor = renderedScale > 0 ? scale / renderedScale : 1.0;
-
   return (
     <div
       ref={wrapperRef}
-      className={`flex flex-col bg-[#1e1f20] text-slate-100 rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border border-[#2f3133] transition-all select-none ${className} ${
+      className={`flex flex-col bg-[#202124] text-slate-100 rounded-xl overflow-hidden shadow-2xl border border-[#3c4043] transition-all select-none ${className} ${
         isFullScreen ? 'fixed inset-0 z-50 rounded-none w-screen h-screen' : ''
       }`}
       style={{ minHeight: isFullScreen ? '100dvh' : minHeight }}
     >
       {/* ============================================================
-          GOOGLE DRIVE STYLE TOP HEADER BAR
+          GOOGLE DRIVE / CHROME STYLE TOP TOOLBAR
       ============================================================ */}
-      <div className="flex items-center justify-between px-3 sm:px-5 py-2.5 bg-[#18191a] border-b border-[#2d2f31] text-white z-20 shrink-0 gap-2">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#ea4335] flex items-center justify-center shrink-0 shadow-md">
-            <span className="text-white font-extrabold text-[10px] sm:text-xs tracking-wider">PDF</span>
+      <header className="flex items-center justify-between px-2.5 sm:px-4 py-2 bg-[#323639] border-b border-[#444746] text-white z-20 shrink-0 gap-2 shadow-md">
+        {/* Left: Document Info */}
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-sm bg-[#ea4335] flex items-center justify-center shrink-0 shadow-xs">
+            <span className="text-white font-black text-[9px] sm:text-[10px] tracking-wider">PDF</span>
           </div>
           <div className="min-w-0">
-            <h2 className="text-xs sm:text-sm font-semibold truncate text-slate-100 leading-snug">
+            <h2 className="text-xs sm:text-sm font-medium truncate text-slate-100 leading-snug max-w-[130px] xs:max-w-[200px] sm:max-w-[260px] md:max-w-md">
               {title}
             </h2>
-            <div className="flex items-center gap-2 text-[10px] sm:text-xs text-slate-400">
-              <span className="truncate">{paperDetails?.subjectName || 'Question Paper'}</span>
-              <span>•</span>
-              <span className="text-[#8ab4f8] font-medium">Google Drive Preview</span>
+            <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-slate-400">
+              <span className="truncate max-w-[120px] sm:max-w-none">
+                {paperDetails?.subjectName || 'Question Paper'}
+              </span>
             </div>
           </div>
         </div>
 
+        {/* Center: Controls (Pagination, Zoom, Fit) */}
+        <div className="flex items-center gap-1 sm:gap-2">
+          {/* Pagination */}
+          <div className="flex items-center bg-[#282a2d] px-1 py-0.5 rounded-md border border-[#444746]">
+            <button
+              onClick={prevPage}
+              disabled={currentPage <= 1 || loading}
+              className="p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
+              title="Previous Page"
+            >
+              <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </button>
+
+            <form onSubmit={handlePageJumpSubmit} className="flex items-center px-1">
+              <input
+                type="text"
+                value={jumpPageInput}
+                onChange={(e) => setJumpPageInput(e.target.value)}
+                onBlur={handlePageJumpSubmit}
+                disabled={totalPages <= 1 || loading}
+                className="w-5 sm:w-7 py-0 text-center text-xs font-medium bg-transparent text-white border-none focus:ring-1 focus:ring-[#8ab4f8] focus:bg-[#18191a] rounded focus:outline-hidden"
+              />
+              <span className="text-[11px] sm:text-xs text-slate-400 font-normal select-none">
+                / {totalPages || 1}
+              </span>
+            </form>
+
+            <button
+              onClick={nextPage}
+              disabled={currentPage >= totalPages || loading}
+              className="p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
+              title="Next Page"
+            >
+              <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-[#444746] hidden xs:block" />
+
+          {/* Zoom Controls */}
+          <div className="flex items-center bg-[#282a2d] px-1 py-0.5 rounded-md border border-[#444746]">
+            <button
+              onClick={zoomOut}
+              disabled={scale <= 0.35 || loading}
+              className="p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
+              title="Zoom Out (-)"
+            >
+              <ZoomOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </button>
+
+            <button
+              onClick={handleResetZoom100}
+              className="px-1.5 py-0.5 rounded hover:bg-white/10 text-[11px] sm:text-xs font-mono font-medium text-slate-200 hover:text-white transition-colors cursor-pointer"
+              title="Reset to 100%"
+            >
+              {Math.round(scale * 100)}%
+            </button>
+
+            <button
+              onClick={zoomIn}
+              disabled={scale >= 3.5 || loading}
+              className="p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
+              title="Zoom In (+)"
+            >
+              <ZoomIn className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-[#444746] hidden sm:block" />
+
+          {/* Fit Width */}
+          <button
+            onClick={handleFitWidth}
+            className={`hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border transition-all cursor-pointer ${
+              fitMode === 'width'
+                ? 'bg-[#1a73e8] border-[#1a73e8] text-white shadow-xs'
+                : 'bg-[#282a2d] border-[#444746] hover:bg-white/10 text-slate-300 hover:text-white'
+            }`}
+            title="Fit to width"
+          >
+            <Maximize className="w-3.5 h-3.5" />
+            <span>Fit Width</span>
+          </button>
+
+          {/* Rotate */}
+          <button
+            onClick={rotateClockwise}
+            className="p-1.5 rounded-md bg-[#282a2d] border border-[#444746] hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer hidden md:inline-flex"
+            title="Rotate 90°"
+          >
+            <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </button>
+        </div>
+
+        {/* Right: Actions (Fullscreen, Download, Open) */}
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           <button
             onClick={handlePrint}
             disabled={loading}
-            className="p-2 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer hidden sm:inline-flex"
+            className="p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer hidden lg:inline-flex"
             title="Print"
           >
-            <Printer className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+            <Printer className="w-4 h-4" />
           </button>
 
           <a
             href={effectiveDownloadUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
-            title="Open in new window"
+            className="hidden sm:inline-flex p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+            title="Open original file"
           >
-            <ExternalLink className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+            <ExternalLink className="w-4 h-4" />
           </a>
 
           <button
             onClick={toggleFullScreen}
-            className="p-2 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+            className="p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer hidden sm:inline-flex"
             title={isFullScreen ? 'Exit Full Screen' : 'Full Screen'}
           >
             {isFullScreen ? (
-              <Minimize2 className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+              <Minimize2 className="w-4 h-4" />
             ) : (
-              <Maximize2 className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+              <Maximize2 className="w-4 h-4" />
             )}
           </button>
 
@@ -582,202 +621,109 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             <a
               href={effectiveDownloadUrl}
               download={effectiveDownloadFilename}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-full bg-[#1a73e8] hover:bg-[#1557b0] active:scale-95 text-white text-xs font-semibold shadow-md transition-all cursor-pointer ml-1"
-              title="Download PDF file"
+              className="inline-flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-[#1a73e8] hover:bg-[#1557b0] active:scale-95 text-white text-xs font-medium shadow-sm transition-all cursor-pointer"
+              title="Download PDF"
             >
-              <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <Download className="w-3.5 h-3.5" />
               <span className="hidden xs:inline">Download</span>
             </a>
           )}
         </div>
-      </div>
+      </header>
 
       {/* ============================================================
-          MAIN VIEWER BODY: Smooth Pan in All Directions & Smooth Zoom
+          MAIN VIEWER CANVAS AREA (Centered, Smooth Scroll)
       ============================================================ */}
-      <div className="relative flex-1 bg-[#131314] overflow-hidden flex flex-col">
-        <div
-          ref={containerRef}
-          onScroll={handleScroll}
-          className="flex-1 overflow-auto p-4 sm:p-8 flex flex-col items-center select-none"
-          style={{
-            touchAction: 'pan-x pan-y pinch-zoom',
-            WebkitOverflowScrolling: 'touch',
-            overscrollBehavior: 'contain',
-          }}
-        >
-          {loading && (
-            <div className="flex flex-col items-center justify-center my-auto text-slate-400 gap-3 py-20">
-              <Loader2 className="w-9 h-9 text-[#8ab4f8] animate-spin" />
-              <p className="text-xs sm:text-sm font-medium text-slate-300 animate-pulse">
-                Loading Google Drive document preview...
-              </p>
-            </div>
-          )}
+      <main
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="flex-1 w-full bg-[#202124] overflow-y-auto overflow-x-auto p-2 sm:p-6 md:p-8 flex flex-col items-center select-none"
+        style={{
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
+          touchAction: 'pan-x pan-y pinch-zoom',
+        }}
+      >
+        {loading && (
+          <div className="flex flex-col items-center justify-center my-auto text-slate-400 gap-3 py-20">
+            <Loader2 className="w-8 h-8 text-[#8ab4f8] animate-spin" />
+            <p className="text-xs sm:text-sm font-medium text-slate-300 animate-pulse">
+              Loading PDF document...
+            </p>
+          </div>
+        )}
 
-          {error && !loading && (
-            <div className="max-w-md w-full my-auto text-center p-6 bg-[#1e1f20] border border-[#2f3133] rounded-2xl space-y-4 shadow-xl">
-              <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
-                <AlertCircle className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="font-bold text-sm sm:text-base text-white">Preview Notice</h4>
-                <p className="text-xs text-slate-400 mt-1">{error}</p>
-              </div>
-              <div className="flex flex-wrap gap-2 justify-center pt-2">
-                <button
-                  onClick={loadDocument}
-                  className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 bg-[#2b2c2f] hover:bg-[#383a3d] text-slate-200 text-xs font-semibold rounded-full transition-colors cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Retry</span>
-                </button>
-                <a
-                  href={effectiveDownloadUrl}
-                  download={effectiveDownloadFilename}
-                  className="inline-flex items-center space-x-1.5 px-4 py-1.5 bg-[#1a73e8] hover:bg-[#1557b0] text-white text-xs font-bold rounded-full transition-colors cursor-pointer shadow-xs"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download File</span>
-                </a>
-              </div>
+        {error && !loading && (
+          <div className="max-w-md w-full my-auto text-center p-6 bg-[#282a2d] border border-[#3c4043] rounded-xl space-y-4 shadow-xl">
+            <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-6 h-6" />
             </div>
-          )}
+            <div>
+              <h4 className="font-bold text-sm sm:text-base text-white">Document Notice</h4>
+              <p className="text-xs text-slate-400 mt-1">{error}</p>
+            </div>
+            <div className="flex flex-wrap gap-2 justify-center pt-2">
+              <button
+                onClick={loadDocument}
+                className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 bg-[#323639] hover:bg-[#3f4347] text-slate-200 text-xs font-semibold rounded-full transition-colors cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Retry</span>
+              </button>
+              <a
+                href={effectiveDownloadUrl}
+                download={effectiveDownloadFilename}
+                className="inline-flex items-center space-x-1.5 px-4 py-1.5 bg-[#1a73e8] hover:bg-[#1557b0] text-white text-xs font-bold rounded-full transition-colors cursor-pointer shadow-xs"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download</span>
+              </a>
+            </div>
+          </div>
+        )}
 
-          {/* Continuous Pages Stack with GPU hardware acceleration & transform origin */}
-          {!loading && !error && pdfDoc && (
-            <div
-              ref={pagesContainerRef}
-              className="flex flex-col items-center gap-6 sm:gap-8 pb-24 my-auto origin-top transition-transform duration-100 ease-out will-change-transform"
-              style={{
-                transform: `scale(${visualScaleFactor})`,
-                transformOrigin: 'top center',
-              }}
-            >
-              {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNum) => (
+        {/* Continuous Centered Pages Stack */}
+        {!loading && !error && pdfDoc && (
+          <div className="flex flex-col items-center gap-4 sm:gap-6 md:gap-8 pb-12 my-auto max-w-full">
+            {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNum) => {
+              const baseDim = basePageDimensions[pageNum] || { width: 612, height: 792 };
+              const isRotated = rotation === 90 || rotation === 270;
+              const pageWidth = isRotated ? baseDim.height * scale : baseDim.width * scale;
+              const pageHeight = isRotated ? baseDim.width * scale : baseDim.height * scale;
+
+              return (
                 <div
                   key={pageNum}
                   ref={(el) => {
-                    pageRefs.current[pageNum] = el;
+                    pageContainerRefs.current[pageNum] = el;
                   }}
-                  className="relative group flex flex-col items-center"
+                  className="relative flex flex-col items-center mx-auto transition-all duration-75"
+                  style={{
+                    width: pageWidth ? `${Math.floor(pageWidth)}px` : 'auto',
+                    minHeight: pageHeight ? `${Math.floor(pageHeight)}px` : 'auto',
+                    maxWidth: '100%',
+                  }}
                 >
-                  <div className="bg-white rounded-xs sm:rounded-sm shadow-[0_8px_30px_rgb(0,0,0,0.6)] ring-1 ring-black/30 overflow-hidden">
+                  <div className="bg-white rounded-xs sm:rounded-sm shadow-[0_4px_24px_rgba(0,0,0,0.6)] ring-1 ring-black/40 overflow-hidden max-w-full">
                     <canvas
                       ref={(el) => {
                         canvasRefs.current[pageNum] = el;
                       }}
-                      className="block max-w-none bg-white"
+                      className="block max-w-full h-auto bg-white"
                     />
                   </div>
 
                   {totalPages > 1 && (
-                    <span className="mt-2 text-[11px] font-medium text-slate-500 select-none">
+                    <span className="mt-2 text-[10px] sm:text-[11px] font-medium text-slate-400 select-none">
                       Page {pageNum} of {totalPages}
                     </span>
                   )}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ============================================================
-            GOOGLE DRIVE FLOATING BOTTOM PILL CONTROLS (Lag-Free)
-        ============================================================ */}
-        {!loading && !error && pdfDoc && (
-          <div className="absolute bottom-3 sm:bottom-4 inset-x-0 mx-auto w-fit z-30 pointer-events-auto animate-in fade-in slide-in-from-bottom-3 duration-300">
-            <div className="flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#282a2d]/95 backdrop-blur-md text-white shadow-[0_8px_24px_rgba(0,0,0,0.6)] border border-[#3c4043]">
-              <div className="flex items-center">
-                <button
-                  onClick={prevPage}
-                  disabled={currentPage <= 1}
-                  className="p-1.5 rounded-full hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
-                  title="Previous Page"
-                >
-                  <ChevronLeft className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-                </button>
-
-                <form onSubmit={handlePageJumpSubmit} className="flex items-center px-1">
-                  <input
-                    type="text"
-                    value={jumpPageInput}
-                    onChange={(e) => setJumpPageInput(e.target.value)}
-                    onBlur={handlePageJumpSubmit}
-                    disabled={totalPages <= 1}
-                    className="w-7 sm:w-8 py-0.5 text-center text-xs font-semibold bg-[#18191a] text-white rounded-md border border-[#3c4043] focus:ring-1 focus:ring-[#8ab4f8] focus:outline-hidden"
-                  />
-                  <span className="text-xs text-slate-400 font-medium ml-1 mr-0.5 select-none">
-                    / {totalPages}
-                  </span>
-                </form>
-
-                <button
-                  onClick={nextPage}
-                  disabled={currentPage >= totalPages}
-                  className="p-1.5 rounded-full hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
-                  title="Next Page"
-                >
-                  <ChevronRight className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-                </button>
-              </div>
-
-              <div className="h-4 w-px bg-[#3c4043] mx-0.5" />
-
-              <div className="flex items-center">
-                <button
-                  onClick={zoomOut}
-                  disabled={scale <= 0.4}
-                  className="p-1.5 rounded-full hover:bg-white/10 active:bg-white/20 active:scale-90 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
-                  title="Zoom Out (-)"
-                >
-                  <ZoomOut className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-                </button>
-
-                <button
-                  onClick={handleResetZoom100}
-                  className="px-1.5 py-0.5 rounded hover:bg-white/10 active:bg-white/20 text-[11px] sm:text-xs font-mono font-medium text-slate-300 hover:text-white transition-colors cursor-pointer"
-                  title="100% Zoom"
-                >
-                  {Math.round(scale * 100)}%
-                </button>
-
-                <button
-                  onClick={zoomIn}
-                  disabled={scale >= 3.5}
-                  className="p-1.5 rounded-full hover:bg-white/10 active:bg-white/20 active:scale-90 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
-                  title="Zoom In (+)"
-                >
-                  <ZoomIn className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-                </button>
-              </div>
-
-              <div className="h-4 w-px bg-[#3c4043] mx-0.5" />
-
-              <button
-                onClick={handleFitWidth}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 cursor-pointer ${
-                  fitMode === 'width'
-                    ? 'bg-[#1a73e8] text-white shadow-xs'
-                    : 'hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white'
-                }`}
-                title="Fit to width"
-              >
-                <Maximize className="w-3.5 h-3.5" />
-                <span className="hidden xs:inline">Fit Width</span>
-              </button>
-
-              <button
-                onClick={rotateClockwise}
-                className="p-1.5 rounded-full hover:bg-white/10 active:bg-white/20 active:scale-90 text-slate-300 hover:text-white transition-all cursor-pointer"
-                title="Rotate 90°"
-              >
-                <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
-            </div>
+              );
+            })}
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 };
