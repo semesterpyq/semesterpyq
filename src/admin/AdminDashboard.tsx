@@ -61,6 +61,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [years, setYears] = useState<Year[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [papers, setPapers] = useState<QuestionPaper[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentAdmin, setCurrentAdmin] = useState<AdminUser>(admin);
@@ -90,8 +94,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!isSilent) setLoading(true);
     setRefreshing(true);
     try {
-      const statsRes = await api.adminGetStats().catch(() => null);
+      const [statsRes, coursesRes, yearsRes, subjectsRes, papersRes] = await Promise.all([
+        api.adminGetStats().catch(() => null),
+        api.adminGetCourses().catch(() => []),
+        api.adminGetYears().catch(() => []),
+        api.adminGetSubjects().catch(() => []),
+        api.adminGetPapers().catch(() => []),
+      ]);
       setStats(statsRes);
+      setCourses(coursesRes || []);
+      setYears(yearsRes || []);
+      setSubjects(subjectsRes || []);
+      setPapers(papersRes || []);
     } catch (err) {
       console.error('Failed to load admin data:', err);
     } finally {
@@ -266,10 +280,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'dashboard' && (
             <DashboardTab
               stats={stats}
-              courses={[]}
-              years={[]}
-              subjects={[]}
-              papers={[]}
+              courses={courses}
+              years={years}
+              subjects={subjects}
+              papers={papers}
               onNavigateTab={(tab) => setActiveTab(tab)}
               onPreviewPaper={(paper) => setPreviewPaper(paper)}
             />
@@ -287,10 +301,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* 3. All Question Papers Tab */}
           {activeTab === 'all-papers' && (
             <AllPapersTab
-              courses={[]}
-              years={[]}
-              subjects={[]}
-              papers={[]}
+              courses={courses}
+              years={years}
+              subjects={subjects}
+              papers={papers}
               onRefresh={handleManualRefresh}
               onNavigateTab={(tab) => setActiveTab(tab)}
               onPreviewPaper={(paper) => setPreviewPaper(paper)}

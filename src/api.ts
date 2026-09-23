@@ -204,7 +204,17 @@ export const api = {
   },
 
   adminGetUniversities: async (): Promise<University[]> => {
-    return await api.getUniversities();
+    try {
+      const data = await firestoreApi.getUniversities(true);
+      if (data && data.length > 0) return data;
+    } catch {
+      // ignore
+    }
+    try {
+      return await request<University[]>('/api/admin/universities');
+    } catch {
+      return [];
+    }
   },
 
   adminCreateUniversity: async (data: Partial<University>): Promise<University> => {
@@ -314,7 +324,18 @@ export const api = {
   },
 
   adminGetCourses: async (universityId?: string): Promise<Course[]> => {
-    return await api.getCourses(universityId);
+    try {
+      const data = await firestoreApi.getCourses(universityId, true);
+      if (data && data.length > 0) return data;
+    } catch {
+      // ignore
+    }
+    try {
+      const query = universityId ? `?universityId=${encodeURIComponent(universityId)}` : '';
+      return await request<Course[]>(`/api/admin/courses${query}`);
+    } catch {
+      return [];
+    }
   },
 
   adminCreateCourse: async (data: Partial<Course>): Promise<Course> => {
@@ -399,7 +420,20 @@ export const api = {
   },
 
   adminGetYears: async (params?: { universityId?: string; courseId?: string }): Promise<Year[]> => {
-    return await api.getYears(params);
+    try {
+      const data = await firestoreApi.getYears(params, true);
+      if (data && data.length > 0) return data;
+    } catch {
+      // ignore
+    }
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.universityId) queryParams.set('universityId', params.universityId);
+      if (params?.courseId) queryParams.set('courseId', params.courseId);
+      return await request<Year[]>(`/api/admin/years?${queryParams.toString()}`);
+    } catch {
+      return [];
+    }
   },
 
   adminCreateYear: async (data: Partial<Year>): Promise<Year> => {
@@ -486,7 +520,21 @@ export const api = {
   },
 
   adminGetSemesters: async (params?: { universityId?: string; courseId?: string; yearId?: string }): Promise<Semester[]> => {
-    return await api.getSemesters(params);
+    try {
+      const data = await firestoreApi.getSemesters(params, true);
+      if (data && data.length > 0) return data;
+    } catch {
+      // ignore
+    }
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.universityId) queryParams.set('universityId', params.universityId);
+      if (params?.courseId) queryParams.set('courseId', params.courseId);
+      if (params?.yearId) queryParams.set('yearId', params.yearId);
+      return await request<Semester[]>(`/api/admin/semesters?${queryParams.toString()}`);
+    } catch {
+      return [];
+    }
   },
 
   adminCreateSemester: async (data: Partial<Semester>): Promise<Semester> => {
@@ -556,10 +604,116 @@ export const api = {
     try {
       const papers = await firestoreApi.getPapers(params);
       const years = Array.from(new Set(papers.map((p) => p.paper_year || p.exam_year))).filter(Boolean).sort((a, b) => b - a);
-      return years.length > 0 ? years : [2025, 2024, 2023];
+      if (years.length > 0) return years;
+
+      try {
+        const queryParams = new URLSearchParams();
+        if (params.universityId) queryParams.set('universityId', params.universityId);
+        if (params.courseId) queryParams.set('courseId', params.courseId);
+        if (params.yearId) queryParams.set('yearId', params.yearId);
+        if (params.semesterId) queryParams.set('semesterId', params.semesterId);
+        const serverPapers = await request<QuestionPaper[]>(`/api/papers?${queryParams.toString()}`);
+        if (serverPapers && serverPapers.length > 0) {
+          const sYears = Array.from(new Set(serverPapers.map((p) => p.paper_year || p.exam_year))).filter(Boolean).sort((a, b) => b - a);
+          if (sYears.length > 0) return sYears;
+        }
+      } catch {
+        // quiet fallback
+      }
+
+      return [2025, 2024, 2023, 2022, 2021];
     } catch {
-      return [2025, 2024, 2023];
+      return [2025, 2024, 2023, 2022, 2021];
     }
+  },
+
+  // AUTO GENERATE MULTIPLE YEARS & SEMESTERS
+  adminAutoGenerateYearsAndSemesters: async (
+    courseId: string,
+    durationYears: number = 3,
+    universityId?: string
+  ): Promise<{ years: Year[]; semesters: Semester[] }> => {
+    let univId = universityId;
+    if (!univId) {
+      try {
+        const course = await api.getCourseById(courseId);
+        univId = course?.university_id || '';
+      } catch {
+        univId = '';
+      }
+    }
+
+    const createdYears: Year[] = [];
+    const createdSemesters: Semester[] = [];
+
+    for (let i = 1; i <= durationYears; i++) {
+      const yearSuffix = i === 1 ? '1st' : i === 2 ? '2nd' : i === 3 ? '3rd' : `${i}th`;
+      const yearName = `${yearSuffix} Year`;
+      const yearId = `yr-${courseId}-${i}`;
+
+      const yearObj: Year = {
+        id: yearId,
+        university_id: univId,
+        course_id: courseId,
+        name: yearName,
+        year_number: i,
+        slug: `year-${i}`,
+        display_order: i,
+        is_published: true,
+        created_at: new Date().toISOString(),
+      };
+
+      try {
+        await firestoreApi.createYear(yearObj);
+      } catch (e) {
+        console.warn('Firestore year creation notice:', e);
+      }
+      try {
+        await request('/api/admin/years', { method: 'POST', body: JSON.stringify(yearObj) });
+      } catch {
+        // server optional
+      }
+      createdYears.push(yearObj);
+
+      // Create 2 semesters per year: (2i - 1) and (2i)
+      const semNums = [2 * i - 1, 2 * i];
+      for (const semNum of semNums) {
+        const semId = `sem-${courseId}-${semNum}`;
+        const semName = `Semester ${semNum}`;
+        const semObj: Semester = {
+          id: semId,
+          university_id: univId,
+          course_id: courseId,
+          year_id: yearId,
+          name: semName,
+          semester_number: semNum,
+          slug: `semester-${semNum}`,
+          display_order: semNum,
+          is_published: true,
+          created_at: new Date().toISOString(),
+        };
+
+        try {
+          await firestoreApi.createSemester(semObj);
+        } catch (e) {
+          console.warn('Firestore semester creation notice:', e);
+        }
+        try {
+          await request('/api/admin/semesters', { method: 'POST', body: JSON.stringify(semObj) });
+        } catch {
+          // server optional
+        }
+        createdSemesters.push(semObj);
+      }
+    }
+
+    // Trigger realtime sync
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('lbs_sync_updated'));
+      localStorage.setItem('lbs_sync_timestamp', String(Date.now()));
+    }
+
+    return { years: createdYears, semesters: createdSemesters };
   },
 
   // 6. SUBJECTS
@@ -598,7 +752,22 @@ export const api = {
     yearId?: string;
     semesterId?: string;
   }): Promise<Subject[]> => {
-    return await api.getSubjects(params);
+    try {
+      const data = await firestoreApi.getSubjects(params, true);
+      if (data && data.length > 0) return data;
+    } catch {
+      // ignore
+    }
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.universityId) queryParams.set('universityId', params.universityId);
+      if (params?.courseId) queryParams.set('courseId', params.courseId);
+      if (params?.yearId) queryParams.set('yearId', params.yearId);
+      if (params?.semesterId) queryParams.set('semesterId', params.semesterId);
+      return await request<Subject[]>(`/api/admin/subjects?${queryParams.toString()}`);
+    } catch {
+      return [];
+    }
   },
 
   adminCreateSubject: async (data: Partial<Subject>): Promise<Subject> => {
@@ -678,13 +847,32 @@ export const api = {
     try {
       const fsData = await firestoreApi.getPapers(params);
       if (fsData && fsData.length > 0) return fsData;
+
+      // Try local/dev server as secondary
+      try {
+        const queryParams = new URLSearchParams();
+        if (params?.universityId) queryParams.set('universityId', params.universityId);
+        if (params?.courseId) queryParams.set('courseId', params.courseId);
+        if (params?.yearId) queryParams.set('yearId', params.yearId);
+        if (params?.semesterId) queryParams.set('semesterId', params.semesterId);
+        if (params?.subjectId) queryParams.set('subjectId', params.subjectId);
+        if (params?.paperYear) queryParams.set('paperYear', String(params.paperYear));
+        const serverPapers = await request<QuestionPaper[]>(`/api/papers?${queryParams.toString()}`);
+        if (serverPapers && serverPapers.length > 0) return serverPapers;
+      } catch {
+        // quiet
+      }
+
       return fallbackPapers.filter((p) => {
-        if (params?.universityId && p.university_id !== params.universityId) return false;
-        if (params?.courseId && p.course_id !== params.courseId) return false;
-        if (params?.yearId && p.year_id !== params.yearId) return false;
-        if (params?.semesterId && p.semester_id !== params.semesterId) return false;
-        if (params?.subjectId && p.subject_id !== params.subjectId) return false;
-        if (params?.paperYear && (p.paper_year || p.exam_year) !== params.paperYear) return false;
+        if (params?.universityId && p.university_id && p.university_id !== params.universityId) return false;
+        if (params?.courseId && p.course_id && p.course_id !== params.courseId) return false;
+        if (params?.yearId && p.year_id && p.year_id !== params.yearId) return false;
+        if (params?.semesterId && p.semester_id && p.semester_id !== params.semesterId) return false;
+        if (params?.subjectId && p.subject_id && p.subject_id !== params.subjectId) return false;
+        if (params?.paperYear) {
+          const py = p.paper_year || p.exam_year;
+          if (py && py !== params.paperYear) return false;
+        }
         return true;
       });
     } catch {
@@ -696,7 +884,11 @@ export const api = {
     const all = await api.getPapers();
     const found = all.find((p) => p.id === id);
     if (found) return found;
-    throw new Error('Paper not found');
+    try {
+      return await request<QuestionPaper>(`/api/papers/${id}`);
+    } catch {
+      throw new Error('Paper not found');
+    }
   },
 
   adminGetPapers: async (params?: {
@@ -706,68 +898,117 @@ export const api = {
     semesterId?: string;
     subjectId?: string;
   }): Promise<QuestionPaper[]> => {
-    return await api.getPapers(params);
-  },
-
-  adminCreatePaperWithFile: async (formData: FormData): Promise<QuestionPaper> => {
     try {
-      return await request<QuestionPaper>('/api/admin/papers', {
-        method: 'POST',
-        body: formData,
-      });
+      const data = await firestoreApi.getPapers(params, true);
+      if (data && data.length > 0) return data;
     } catch {
-      // client-side parse
-      const title = (formData.get('title') as string) || 'New Question Paper';
-      const file = formData.get('pdf') as File;
-      let file_url = '/assets/sample-paper.pdf';
-      let file_name = 'paper.pdf';
-      let file_size = '500 KB';
-      if (file && file.name) {
-        file_url = await fileToDataUrl(file);
-        file_name = file.name;
-        file_size = formatBytes(file.size);
-      }
-      const newPaper: QuestionPaper = {
-        id: 'paper-' + Date.now(),
-        university_id: (formData.get('university_id') as string) || '',
-        course_id: (formData.get('course_id') as string) || '',
-        year_id: (formData.get('year_id') as string) || '',
-        semester_id: (formData.get('semester_id') as string) || '',
-        subject_id: (formData.get('subject_id') as string) || '',
-        paper_year: parseInt((formData.get('paper_year') as string) || '2025', 10),
-        exam_year: parseInt((formData.get('exam_year') as string) || '2025', 10),
-        title,
-        exam_session: (formData.get('exam_session') as string) || 'Annual/Semester',
-        paper_code: (formData.get('paper_code') as string) || '',
-        total_marks: parseInt((formData.get('total_marks') as string) || '100', 10),
-        duration: (formData.get('duration') as string) || '3 Hours',
-        file_name,
-        file_url,
-        file_size,
-        is_published: true,
-        view_count: 0,
-        download_count: 0,
-        created_at: new Date().toISOString(),
-      };
-      await firestoreApi.createPaper(newPaper);
-      return newPaper;
+      // ignore
+    }
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.universityId) queryParams.set('universityId', params.universityId);
+      if (params?.courseId) queryParams.set('courseId', params.courseId);
+      if (params?.yearId) queryParams.set('yearId', params.yearId);
+      if (params?.semesterId) queryParams.set('semesterId', params.semesterId);
+      if (params?.subjectId) queryParams.set('subjectId', params.subjectId);
+      return await request<QuestionPaper[]>(`/api/admin/papers?${queryParams.toString()}`);
+    } catch {
+      return [];
     }
   },
 
-  adminCreatePaper: async (data: Partial<QuestionPaper>): Promise<QuestionPaper> => {
+  adminCreatePaperWithFile: async (formData: FormData): Promise<QuestionPaper> => {
+    const title = (formData.get('title') as string) || 'New Question Paper';
+    const file = formData.get('pdf') as File;
+    let file_url = '/assets/sample-paper.pdf';
+    let file_name = 'paper.pdf';
+    let file_size = '500 KB';
+    if (file && file.name) {
+      try {
+        file_url = await fileToDataUrl(file);
+      } catch {
+        file_url = '/assets/sample-paper.pdf';
+      }
+      file_name = file.name;
+      file_size = formatBytes(file.size);
+    }
+
+    const rawYear = parseInt((formData.get('paper_year') || formData.get('exam_year') || String(new Date().getFullYear())) as string, 10);
+    const newPaperId = 'qp-' + Date.now();
+
     const newPaper: QuestionPaper = {
-      id: data.id || 'paper-' + Date.now(),
+      id: newPaperId,
+      university_id: (formData.get('university_id') as string) || '',
+      course_id: (formData.get('course_id') as string) || '',
+      year_id: (formData.get('year_id') as string) || '',
+      semester_id: (formData.get('semester_id') as string) || '',
+      subject_id: (formData.get('subject_id') as string) || '',
+      paper_year: rawYear,
+      exam_year: rawYear,
+      title,
+      exam_session: (formData.get('exam_session') as string) || 'Semester Examination',
+      paper_code: (formData.get('paper_code') as string) || `QP-${rawYear}`,
+      total_marks: parseInt((formData.get('total_marks') as string) || '75', 10),
+      duration: (formData.get('duration') as string) || '3 Hours',
+      file_name,
+      file_url,
+      file_size,
+      is_published: true,
+      view_count: 0,
+      download_count: 0,
+      created_at: new Date().toISOString(),
+    };
+
+    // 1. Save to Firestore ALWAYS
+    try {
+      await firestoreApi.createPaper(newPaper);
+    } catch (e) {
+      console.warn('Firestore paper write warning:', e);
+    }
+
+    // 2. Save to dev server if available
+    try {
+      const serverRes = await request<QuestionPaper>('/api/admin/papers', {
+        method: 'POST',
+        body: formData,
+      });
+      if (serverRes && serverRes.id) {
+        // If server returned a dedicated file_url, keep it merged
+        if (serverRes.file_url && !serverRes.file_url.startsWith('data:')) {
+          newPaper.file_url = serverRes.file_url;
+          await firestoreApi.updatePaper(newPaper.id, { file_url: serverRes.file_url }).catch(() => null);
+        }
+      }
+    } catch {
+      // server optional
+    }
+
+    // Trigger instant client sync
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('lbs_sync_updated'));
+      localStorage.setItem('lbs_sync_timestamp', String(Date.now()));
+    }
+
+    return newPaper;
+  },
+
+  adminCreatePaper: async (data: Partial<QuestionPaper>): Promise<QuestionPaper> => {
+    const rawYear = Number(data.paper_year || data.exam_year || new Date().getFullYear());
+    const newPaperId = data.id || 'paper-' + Date.now();
+
+    const newPaper: QuestionPaper = {
+      id: newPaperId,
       university_id: data.university_id || '',
       course_id: data.course_id || '',
       year_id: data.year_id || '',
       semester_id: data.semester_id || '',
       subject_id: data.subject_id || '',
-      paper_year: data.paper_year || data.exam_year || 2025,
-      exam_year: data.exam_year || data.paper_year || 2025,
+      paper_year: rawYear,
+      exam_year: rawYear,
       title: data.title || 'Question Paper',
       exam_session: data.exam_session || 'Semester Exam',
-      paper_code: data.paper_code || '',
-      total_marks: data.total_marks || 100,
+      paper_code: data.paper_code || `QP-${rawYear}`,
+      total_marks: data.total_marks || 75,
       duration: data.duration || '3 Hours',
       file_name: data.file_name || 'paper.pdf',
       file_url: data.file_url || '/assets/sample-paper.pdf',
@@ -778,11 +1019,13 @@ export const api = {
       created_at: new Date().toISOString(),
       ...data,
     };
+
     try {
       await firestoreApi.createPaper(newPaper);
     } catch (e) {
       console.warn('Firestore paper write warning:', e);
     }
+
     try {
       await request<QuestionPaper>('/api/admin/papers', {
         method: 'POST',
@@ -791,24 +1034,44 @@ export const api = {
     } catch {
       // server optional
     }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('lbs_sync_updated'));
+      localStorage.setItem('lbs_sync_timestamp', String(Date.now()));
+    }
+
     return newPaper;
   },
 
   adminUpdatePaper: async (id: string, data: Partial<QuestionPaper>): Promise<QuestionPaper> => {
+    const rawYear = data.paper_year || data.exam_year;
+    const mergedData = {
+      ...data,
+      ...(rawYear ? { paper_year: Number(rawYear), exam_year: Number(rawYear) } : {}),
+      updated_at: new Date().toISOString(),
+    };
+
     try {
-      await firestoreApi.updatePaper(id, data);
+      await firestoreApi.updatePaper(id, mergedData);
     } catch (e) {
       console.warn('Firestore paper update warning:', e);
     }
+
     try {
       await request<QuestionPaper>(`/api/admin/papers/${id}`, {
         method: 'PUT',
-        body: JSON.stringify(data),
+        body: JSON.stringify(mergedData),
       });
     } catch {
       // server optional
     }
-    return { id, title: '', ...data } as QuestionPaper;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('lbs_sync_updated'));
+      localStorage.setItem('lbs_sync_timestamp', String(Date.now()));
+    }
+
+    return { id, title: '', ...mergedData } as QuestionPaper;
   },
 
   adminDeletePaper: async (id: string): Promise<{ success: boolean }> => {
@@ -824,6 +1087,12 @@ export const api = {
     } catch {
       // server optional
     }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('lbs_sync_updated'));
+      localStorage.setItem('lbs_sync_timestamp', String(Date.now()));
+    }
+
     return { success: true };
   },
 
@@ -919,15 +1188,23 @@ export const api = {
 
   adminGetStats: async (): Promise<DashboardStats> => {
     try {
-      return await firestoreApi.getStats();
+      const fsStats = await firestoreApi.getStats();
+      if (fsStats && ((fsStats.total_universities || 0) > 0 || (fsStats.total_papers || 0) > 0)) {
+        return fsStats;
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      return await request<DashboardStats>('/api/admin/stats');
     } catch {
       return {
-        total_universities: 2,
-        total_courses: 6,
-        total_subjects: 6,
-        total_papers: 4,
-        total_downloads: 727,
-        total_views: 1126,
+        total_universities: 0,
+        total_courses: 0,
+        total_subjects: 0,
+        total_papers: 0,
+        total_downloads: 0,
+        total_views: 0,
       };
     }
   },

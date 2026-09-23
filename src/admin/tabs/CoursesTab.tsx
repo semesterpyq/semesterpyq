@@ -7,6 +7,8 @@ import {
   Building2,
   X,
   Loader2,
+  Sparkles,
+  CheckCircle2,
 } from 'lucide-react';
 import { Course, University } from '../../types';
 import { api } from '../../api';
@@ -31,7 +33,11 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({ onRefresh }) => {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [description, setDescription] = useState('');
+  const [autoGenerateYears, setAutoGenerateYears] = useState(true);
+  const [durationYears, setDurationYears] = useState(3);
   const [saving, setSaving] = useState(false);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -55,10 +61,12 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({ onRefresh }) => {
 
   const openAddModal = () => {
     setEditingCourse(null);
-    setUnivId(universities[0]?.id || '');
+    setUnivId(selectedUnivId !== 'all' ? selectedUnivId : universities[0]?.id || '');
     setName('');
     setCode('');
     setDescription('');
+    setAutoGenerateYears(true);
+    setDurationYears(3);
     setModalOpen(true);
   };
 
@@ -68,6 +76,7 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({ onRefresh }) => {
     setName(c.name);
     setCode(c.code);
     setDescription(c.description || '');
+    setAutoGenerateYears(false);
     setModalOpen(true);
   };
 
@@ -87,21 +96,45 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({ onRefresh }) => {
           code: code.trim().toUpperCase(),
           description: description.trim(),
         });
+        setSuccessNotice(`Course "${name}" updated successfully!`);
       } else {
-        await api.adminCreateCourse({
+        const created = await api.adminCreateCourse({
           university_id: univId,
           name: name.trim(),
           code: code.trim().toUpperCase(),
           description: description.trim(),
         });
+
+        if (autoGenerateYears && created?.id) {
+          await api.adminAutoGenerateYearsAndSemesters(created.id, durationYears, univId);
+          setSuccessNotice(`Course "${name}" created with ${durationYears} Academic Years & ${durationYears * 2} Semesters automatically!`);
+        } else {
+          setSuccessNotice(`Course "${name}" created successfully!`);
+        }
       }
       setModalOpen(false);
       loadData();
       onRefresh();
+      setTimeout(() => setSuccessNotice(null), 5000);
     } catch (err: any) {
       alert(`Error saving course: ${err.message}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleQuickGenerateYears = async (course: Course, yearsCount: number = 3) => {
+    setGeneratingId(course.id);
+    try {
+      await api.adminAutoGenerateYearsAndSemesters(course.id, yearsCount, course.university_id);
+      setSuccessNotice(`Successfully generated ${yearsCount} Years and ${yearsCount * 2} Semesters for ${course.name}!`);
+      loadData();
+      onRefresh();
+      setTimeout(() => setSuccessNotice(null), 5000);
+    } catch (err: any) {
+      alert(`Auto-generation failed: ${err.message}`);
+    } finally {
+      setGeneratingId(null);
     }
   };
 
@@ -126,7 +159,7 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({ onRefresh }) => {
         <div>
           <h2 className="text-xl font-bold text-slate-900 font-serif">Course Management</h2>
           <p className="text-xs text-slate-500 mt-1">
-            Add, edit, or delete courses for each university (e.g. B.A, B.Sc, B.Com, BBA, BCA, LLB).
+            Add, edit, or delete courses for each university. Automatic multi-year & semester generation is built-in.
           </p>
         </div>
 
@@ -135,57 +168,69 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({ onRefresh }) => {
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
         >
           <Plus className="w-4 h-4" />
-          <span>Add Course</span>
+          <span>Add Course (Auto Years)</span>
         </button>
       </div>
 
-      {/* University Filter */}
-      <div className="flex items-center gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-        <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
-        <span className="text-xs font-bold text-slate-700 shrink-0">Filter by University:</span>
+      {successNotice && (
+        <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-xl animate-fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{successNotice}</span>
+        </div>
+      )}
+
+      {/* Filter Bar */}
+      <div className="flex items-center gap-3">
+        <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+          <Building2 className="w-4 h-4 text-indigo-600" />
+          <span>Filter University:</span>
+        </label>
         <select
           value={selectedUnivId}
           onChange={(e) => setSelectedUnivId(e.target.value)}
-          className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 bg-white"
+          className="px-3.5 py-1.5 rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500 bg-white"
         >
-          <option value="all">All Universities</option>
+          <option value="all">All Universities ({universities.length})</option>
           {universities.map((u) => (
             <option key={u.id} value={u.id}>
-              {u.name}
+              {u.name} ({u.code})
             </option>
           ))}
         </select>
       </div>
 
-      {/* Grid */}
+      {/* Course List */}
       {loading ? (
-        <div className="text-center py-10 text-slate-400 text-xs">Loading courses...</div>
+        <div className="flex items-center justify-center py-12 text-slate-400">
+          <Loader2 className="w-6 h-6 animate-spin mr-2" />
+          <span className="text-xs">Loading courses...</span>
+        </div>
       ) : courses.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-slate-300 rounded-2xl p-6">
-          <GraduationCap className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-          <h3 className="text-sm font-semibold text-slate-700">No Courses Found</h3>
-          <p className="text-xs text-slate-500 mt-1">Click "Add Course" above to create a course for your university.</p>
+        <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-2xl p-6">
+          <GraduationCap className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-slate-700">No courses found</p>
+          <p className="text-xs text-slate-400 mt-1">
+            Click "Add Course" to create courses for your universities.
+          </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {courses.map((c) => (
             <div
               key={c.id}
-              className="bg-slate-50 rounded-2xl border border-slate-200 p-4 flex flex-col justify-between gap-3"
+              className="bg-slate-50/70 hover:bg-white rounded-2xl border border-slate-200/90 p-4 transition-all hover:shadow-xs flex flex-col justify-between gap-3"
             >
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-indigo-600 bg-indigo-100/80 px-2.5 py-0.5 rounded-md">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-200/60 px-2 py-0.5 rounded-md">
                     {c.code}
                   </span>
-                  {c.university_name && (
-                    <span className="text-[10px] font-semibold text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200 truncate max-w-[150px]">
-                      {c.university_name}
-                    </span>
-                  )}
+                  <span className="text-[11px] text-slate-400 font-mono truncate max-w-[130px]">
+                    {c.university_name || 'University'}
+                  </span>
                 </div>
 
-                <h3 className="font-bold text-base text-slate-900 font-serif leading-snug">
+                <h3 className="text-sm font-bold text-slate-900 leading-snug">
                   {c.name}
                 </h3>
 
@@ -194,19 +239,59 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({ onRefresh }) => {
                 )}
               </div>
 
-              <div className="flex items-center justify-end gap-1 pt-3 border-t border-slate-200/60">
-                <button
-                  onClick={() => openEditModal(c)}
-                  className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-colors"
-                >
-                  <Edit className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => handleDelete(c)}
-                  className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+              <div className="space-y-2 pt-3 border-t border-slate-200/60">
+                {/* 1-Click Auto-generate helper */}
+                <div className="flex items-center justify-between gap-1 text-[11px]">
+                  <button
+                    type="button"
+                    disabled={generatingId === c.id}
+                    onClick={() => handleQuickGenerateYears(c, 3)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-lg border border-indigo-200/80 transition-colors cursor-pointer"
+                    title="Auto-create 1st, 2nd, 3rd Years and 6 Semesters"
+                  >
+                    {generatingId === c.id ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3 h-3 text-indigo-600" />
+                    )}
+                    <span>⚡ Auto 3 Yrs (6 Sem)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={generatingId === c.id}
+                    onClick={() => handleQuickGenerateYears(c, 4)}
+                    className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-[10px] transition-colors cursor-pointer"
+                    title="Auto-create 4 Years and 8 Semesters"
+                  >
+                    <span>4 Yrs</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={generatingId === c.id}
+                    onClick={() => handleQuickGenerateYears(c, 2)}
+                    className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-[10px] transition-colors cursor-pointer"
+                    title="Auto-create 2 Years and 4 Semesters"
+                  >
+                    <span>2 Yrs</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-end gap-1 pt-1">
+                  <button
+                    onClick={() => openEditModal(c)}
+                    className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-colors"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(c)}
+                    className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -275,33 +360,77 @@ export const CoursesTab: React.FC<CoursesTabProps> = ({ onRefresh }) => {
                 </div>
               </div>
 
+              {!editingCourse && (
+                <div className="p-3.5 rounded-xl bg-indigo-50/70 border border-indigo-200/80 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={autoGenerateYears}
+                        onChange={(e) => setAutoGenerateYears(e.target.checked)}
+                        className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                      />
+                      <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Automatically create Multiple Years & Semesters</span>
+                      </span>
+                    </label>
+                  </div>
+
+                  {autoGenerateYears && (
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-indigo-900 mb-1">
+                          Course Duration / Years:
+                        </label>
+                        <select
+                          value={durationYears}
+                          onChange={(e) => setDurationYears(Number(e.target.value))}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 text-xs font-semibold text-indigo-950 bg-white"
+                        >
+                          <option value={3}>3 Years (6 Semesters) - B.A, B.Sc, B.Com</option>
+                          <option value={4}>4 Years (8 Semesters) - B.Tech, B.Pharm</option>
+                          <option value={2}>2 Years (4 Semesters) - M.A, M.Sc, M.Com</option>
+                          <option value={1}>1 Year (2 Semesters) - Diploma / Certificate</option>
+                          <option value={5}>5 Years (10 Semesters) - Law / Architecture</option>
+                        </select>
+                      </div>
+                      <div className="text-[11px] text-indigo-700 flex items-center">
+                        ⚡ Will create 1st to {durationYears}th Year and Semesters 1 to {durationYears * 2} automatically.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Description
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Course summary or details..."
+                  placeholder="Optional brief description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs"
+                  className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs cursor-pointer"
                 >
-                  {saving ? 'Saving...' : editingCourse ? 'Update Course' : 'Create Course'}
+                  {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{editingCourse ? 'Save Changes' : 'Create Course'}</span>
                 </button>
               </div>
             </form>

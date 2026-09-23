@@ -192,7 +192,7 @@ export const firestoreApi = {
   },
 
   // UNIVERSITIES
-  getUniversities: async (): Promise<University[]> => {
+  getUniversities: async (skipFallback?: boolean): Promise<University[]> => {
     const p = 'universities';
     try {
       const snap = await getDocs(collection(db, 'universities'));
@@ -200,6 +200,7 @@ export const firestoreApi = {
       snap.forEach((d) => list.push(d.data() as University));
       return list.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
     } catch (err) {
+      if (skipFallback) return [];
       handleFirestoreError(err, OperationType.LIST, p);
       return fallbackUniversities;
     }
@@ -273,12 +274,14 @@ export const firestoreApi = {
   },
 
   // COURSES
-  getCourses: async (universityId?: string): Promise<Course[]> => {
+  getCourses: async (universityId?: string, skipFallback?: boolean): Promise<Course[]> => {
     const p = 'courses';
     try {
       const snap = await getDocs(collection(db, 'courses'));
       if (snap.empty) {
-        return universityId
+        return skipFallback
+          ? []
+          : universityId
           ? fallbackCourses.filter((c) => c.university_id === universityId)
           : fallbackCourses;
       }
@@ -289,6 +292,7 @@ export const firestoreApi = {
       }
       return list.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
     } catch (err) {
+      if (skipFallback) return [];
       handleFirestoreError(err, OperationType.LIST, p);
       return universityId
         ? fallbackCourses.filter((c) => c.university_id === universityId)
@@ -332,16 +336,18 @@ export const firestoreApi = {
   },
 
   // YEARS
-  getYears: async (params?: { universityId?: string; courseId?: string }): Promise<Year[]> => {
+  getYears: async (params?: { universityId?: string; courseId?: string }, skipFallback?: boolean): Promise<Year[]> => {
     const p = 'years';
     try {
       const snap = await getDocs(collection(db, 'years'));
       if (snap.empty) {
-        return fallbackYears.filter((y) => {
-          if (params?.universityId && y.university_id !== params.universityId) return false;
-          if (params?.courseId && y.course_id !== params.courseId) return false;
-          return true;
-        });
+        return skipFallback
+          ? []
+          : fallbackYears.filter((y) => {
+              if (params?.universityId && y.university_id !== params.universityId) return false;
+              if (params?.courseId && y.course_id !== params.courseId) return false;
+              return true;
+            });
       }
       let list: Year[] = [];
       snap.forEach((d) => list.push(d.data() as Year));
@@ -349,6 +355,7 @@ export const firestoreApi = {
       if (params?.courseId) list = list.filter((y) => y.course_id === params.courseId);
       return list.sort((a, b) => a.year_number - b.year_number);
     } catch (err) {
+      if (skipFallback) return [];
       handleFirestoreError(err, OperationType.LIST, p);
       return fallbackYears;
     }
@@ -390,17 +397,19 @@ export const firestoreApi = {
   },
 
   // SEMESTERS
-  getSemesters: async (params?: { universityId?: string; courseId?: string; yearId?: string }): Promise<Semester[]> => {
+  getSemesters: async (params?: { universityId?: string; courseId?: string; yearId?: string }, skipFallback?: boolean): Promise<Semester[]> => {
     const p = 'semesters';
     try {
       const snap = await getDocs(collection(db, 'semesters'));
       if (snap.empty) {
-        return fallbackSemesters.filter((s) => {
-          if (params?.universityId && s.university_id !== params.universityId) return false;
-          if (params?.courseId && s.course_id !== params.courseId) return false;
-          if (params?.yearId && s.year_id !== params.yearId) return false;
-          return true;
-        });
+        return skipFallback
+          ? []
+          : fallbackSemesters.filter((s) => {
+              if (params?.universityId && s.university_id !== params.universityId) return false;
+              if (params?.courseId && s.course_id !== params.courseId) return false;
+              if (params?.yearId && s.year_id !== params.yearId) return false;
+              return true;
+            });
       }
       let list: Semester[] = [];
       snap.forEach((d) => list.push(d.data() as Semester));
@@ -409,6 +418,7 @@ export const firestoreApi = {
       if (params?.yearId) list = list.filter((s) => s.year_id === params.yearId);
       return list.sort((a, b) => a.semester_number - b.semester_number);
     } catch (err) {
+      if (skipFallback) return [];
       handleFirestoreError(err, OperationType.LIST, p);
       return fallbackSemesters;
     }
@@ -456,18 +466,20 @@ export const firestoreApi = {
     yearId?: string;
     semesterId?: string;
     paperYear?: number;
-  }): Promise<Subject[]> => {
+  }, skipFallback?: boolean): Promise<Subject[]> => {
     const p = 'subjects';
     try {
       const snap = await getDocs(collection(db, 'subjects'));
       if (snap.empty) {
-        return fallbackSubjects.filter((s) => {
-          if (params?.universityId && s.university_id !== params.universityId) return false;
-          if (params?.courseId && s.course_id !== params.courseId) return false;
-          if (params?.yearId && s.year_id !== params.yearId) return false;
-          if (params?.semesterId && s.semester_id !== params.semesterId) return false;
-          return true;
-        });
+        return skipFallback
+          ? []
+          : fallbackSubjects.filter((s) => {
+              if (params?.universityId && s.university_id !== params.universityId) return false;
+              if (params?.courseId && s.course_id !== params.courseId) return false;
+              if (params?.yearId && s.year_id !== params.yearId) return false;
+              if (params?.semesterId && s.semester_id !== params.semesterId) return false;
+              return true;
+            });
       }
       let list: Subject[] = [];
       snap.forEach((d) => list.push(d.data() as Subject));
@@ -477,6 +489,7 @@ export const firestoreApi = {
       if (params?.semesterId) list = list.filter((s) => s.semester_id === params.semesterId);
       return list.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
     } catch (err) {
+      if (skipFallback) return [];
       handleFirestoreError(err, OperationType.LIST, p);
       return fallbackSubjects;
     }
@@ -525,20 +538,22 @@ export const firestoreApi = {
     semesterId?: string;
     subjectId?: string;
     paperYear?: number;
-  }): Promise<QuestionPaper[]> => {
+  }, skipFallback?: boolean): Promise<QuestionPaper[]> => {
     const p = 'papers';
     try {
       const snap = await getDocs(collection(db, 'papers'));
       if (snap.empty) {
-        return fallbackPapers.filter((paper) => {
-          if (params?.universityId && paper.university_id !== params.universityId) return false;
-          if (params?.courseId && paper.course_id !== params.courseId) return false;
-          if (params?.yearId && paper.year_id !== params.yearId) return false;
-          if (params?.semesterId && paper.semester_id !== params.semesterId) return false;
-          if (params?.subjectId && paper.subject_id !== params.subjectId) return false;
-          if (params?.paperYear && (paper.paper_year || paper.exam_year) !== params.paperYear) return false;
-          return true;
-        });
+        return skipFallback
+          ? []
+          : fallbackPapers.filter((paper) => {
+              if (params?.universityId && paper.university_id !== params.universityId) return false;
+              if (params?.courseId && paper.course_id !== params.courseId) return false;
+              if (params?.yearId && paper.year_id !== params.yearId) return false;
+              if (params?.semesterId && paper.semester_id !== params.semesterId) return false;
+              if (params?.subjectId && paper.subject_id !== params.subjectId) return false;
+              if (params?.paperYear && (paper.paper_year || paper.exam_year) !== params.paperYear) return false;
+              return true;
+            });
       }
       let list: QuestionPaper[] = [];
       snap.forEach((d) => list.push(d.data() as QuestionPaper));
@@ -550,6 +565,7 @@ export const firestoreApi = {
       if (params?.paperYear) list = list.filter((paper) => (paper.paper_year || paper.exam_year) === params.paperYear);
       return list.sort((a, b) => (b.paper_year || b.exam_year || 0) - (a.paper_year || a.exam_year || 0));
     } catch (err) {
+      if (skipFallback) return [];
       handleFirestoreError(err, OperationType.LIST, p);
       return fallbackPapers;
     }
@@ -592,10 +608,10 @@ export const firestoreApi = {
 
   getStats: async (): Promise<DashboardStats> => {
     try {
-      const univs = await firestoreApi.getUniversities();
-      const courses = await firestoreApi.getCourses();
-      const subjects = await firestoreApi.getSubjects();
-      const papers = await firestoreApi.getPapers();
+      const univs = await firestoreApi.getUniversities(true);
+      const courses = await firestoreApi.getCourses(undefined, true);
+      const subjects = await firestoreApi.getSubjects(undefined, true);
+      const papers = await firestoreApi.getPapers(undefined, true);
       const totalDownloads = papers.reduce((acc, p) => acc + (p.download_count || 0), 0);
       const totalViews = papers.reduce((acc, p) => acc + (p.view_count || 0), 0);
 
@@ -609,12 +625,12 @@ export const firestoreApi = {
       };
     } catch {
       return {
-        total_universities: 2,
-        total_courses: 6,
-        total_subjects: 6,
-        total_papers: 4,
-        total_downloads: 727,
-        total_views: 1126,
+        total_universities: 0,
+        total_courses: 0,
+        total_subjects: 0,
+        total_papers: 0,
+        total_downloads: 0,
+        total_views: 0,
       };
     }
   },
