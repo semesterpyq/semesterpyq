@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, BookOpen, GraduationCap, Building2, FileText, ChevronRight, X, Loader2 } from 'lucide-react';
 import { api } from '../api';
+import { UniversityLogo } from './UniversityLogo';
 
 interface SearchResults {
   universities?: Array<{
@@ -176,11 +177,13 @@ export const ColorfulBanner: React.FC<ColorfulBannerProps> = ({
                           >
                             <div className="flex items-center gap-2.5">
                               <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
-                                {u.logo_url ? (
-                                  <img src={u.logo_url} alt={u.name} className="w-full h-full object-cover rounded-full" />
-                                ) : (
-                                  <Building2 className="w-3.5 h-3.5 text-indigo-600" />
-                                )}
+                                <UniversityLogo
+                                  logoUrl={u.logo_url}
+                                  name={u.name}
+                                  code={u.code}
+                                  className="w-full h-full object-contain rounded-full"
+                                  iconClassName="w-3.5 h-3.5 text-indigo-600"
+                                />
                               </div>
                               <div>
                                 <span className="font-semibold text-slate-800 group-hover:text-indigo-600 block">{u.name}</span>

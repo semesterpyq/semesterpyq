@@ -2,6 +2,7 @@ import React from 'react';
 import { Building2, BookOpen, ArrowRight } from 'lucide-react';
 import { University, SiteSettings } from '../types';
 import { ColorfulBanner } from '../components/ColorfulBanner';
+import { UniversityLogo } from '../components/UniversityLogo';
 
 interface HomeViewProps {
   settings: SiteSettings;
@@ -249,19 +250,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
                     {/* Static Clean Inner Circular Logo Container (No color shift/animation in center, 100% original logo) */}
                     <div className="relative z-10 w-13 h-13 sm:w-16 sm:h-16 md:w-18 md:h-18 rounded-full bg-white p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-2xs border border-slate-100">
-                      {univ.logo_url ? (
-                        <img
-                          src={univ.logo_url}
-                          alt={shortName}
-                          className="w-full h-full object-contain rounded-full scale-100 group-hover:scale-105 transition-transform duration-300"
-                          style={{ filter: 'none' }}
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                        />
-                      ) : (
-                        <Building2 className={`w-7 h-7 sm:w-8 sm:h-8 ${theme.iconColor} shrink-0 group-hover:scale-105 transition-transform duration-300`} />
-                      )}
+                      <UniversityLogo
+                        logoUrl={univ.logo_url}
+                        name={univ.name}
+                        code={shortName}
+                        className="w-full h-full object-contain rounded-full scale-100 group-hover:scale-105 transition-transform duration-300"
+                        iconClassName={`w-6 h-6 sm:w-7 sm:h-7 ${theme.iconColor}`}
+                      />
                     </div>
                   </div>
 

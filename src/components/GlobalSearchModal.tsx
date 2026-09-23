@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, Building2, BookOpen, FileText, Loader2, ChevronRight, GraduationCap } from 'lucide-react';
 import { api } from '../api';
+import { UniversityLogo } from './UniversityLogo';
 
 interface GlobalSearchModalProps {
   onClose: () => void;
@@ -133,11 +134,13 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
-                            {u.logo_url ? (
-                              <img src={u.logo_url} alt={u.name} className="w-full h-full object-cover rounded-full" />
-                            ) : (
-                              <Building2 className="w-4 h-4 text-indigo-600" />
-                            )}
+                            <UniversityLogo
+                              logoUrl={u.logo_url}
+                              name={u.name}
+                              code={u.code}
+                              className="w-full h-full object-contain rounded-full"
+                              iconClassName="w-4 h-4 text-indigo-600"
+                            />
                           </div>
                           <div>
                             <p className="font-bold text-xs text-slate-900 group-hover:text-indigo-600">{u.name}</p>

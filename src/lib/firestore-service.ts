@@ -120,6 +120,39 @@ export async function initFirestoreDatabase() {
       await setDoc(initMarkerRef, { seeded: true, timestamp: Date.now() });
       console.log('Database initialized cleanly without dummy records.');
     }
+
+    const logoFixMarkerRef = doc(db, 'settings', 'logo_fix_marker_v1');
+    const logoFixSnap = await getDoc(logoFixMarkerRef);
+    if (!logoFixSnap.exists()) {
+      try {
+        const univSnaps = await getDocs(collection(db, 'universities'));
+        for (const uDoc of univSnaps.docs) {
+          const u = uDoc.data() as University;
+          const code = (u.code || '').toLowerCase();
+          const name = (u.name || '').toLowerCase();
+          let newLogo = u.logo_url;
+
+          if (!newLogo || newLogo.includes('/uploads/logos/') || newLogo === '/assets/logos/logo.jpg') {
+            if (code === 'mpublp' || name.includes('pateshwari')) {
+              newLogo = '/assets/logos/mpublp.jpg';
+            } else if (code === 'rmlau' || name.includes('lohia') || name.includes('rmlau')) {
+              newLogo = '/assets/logos/rmlau.png';
+            } else if (code === 'lu' || name.includes('lucknow')) {
+              newLogo = '/assets/logos/lu.jpg';
+            } else if (code === 'au' || name.includes('allahabad')) {
+              newLogo = '/assets/logos/au.jpg';
+            }
+          }
+
+          if (newLogo && newLogo !== u.logo_url) {
+            await setDoc(doc(db, 'universities', u.id), { logo_url: newLogo }, { merge: true });
+          }
+        }
+        await setDoc(logoFixMarkerRef, { fixed: true, timestamp: Date.now() });
+      } catch (e) {
+        console.warn('Logo migration notice:', e);
+      }
+    }
   } catch (err) {
     console.warn('Firestore initialization notice:', err);
   }

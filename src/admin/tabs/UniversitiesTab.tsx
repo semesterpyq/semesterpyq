@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Building2, Plus, Edit2, Trash2, Upload, Image as ImageIcon, AlertTriangle, Loader2 } from 'lucide-react';
 import { University } from '../../types';
 import { api } from '../../api';
+import { UniversityLogo } from '../../components/UniversityLogo';
 
 interface UniversitiesTabProps {
   onRefresh: () => void;
@@ -48,7 +49,7 @@ export const UniversitiesTab: React.FC<UniversitiesTabProps> = ({ onRefresh }) =
     setName('');
     setCode('');
     setDescription('');
-    setLogoUrl('/assets/logos/logo.jpg');
+    setLogoUrl('');
     setStatus('active');
     setModalOpen(true);
   };
@@ -176,12 +177,14 @@ export const UniversitiesTab: React.FC<UniversitiesTabProps> = ({ onRefresh }) =
               className="bg-slate-50 rounded-2xl border border-slate-200 p-4 sm:p-5 flex items-start justify-between gap-4"
             >
               <div className="flex items-start gap-4 min-w-0">
-                <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 p-1.5 flex items-center justify-center shrink-0">
-                  {univ.logo_url ? (
-                    <img src={univ.logo_url} alt={univ.name} className="w-full h-full object-contain rounded-lg" />
-                  ) : (
-                    <Building2 className="w-7 h-7 text-indigo-600" />
-                  )}
+                <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 p-1 flex items-center justify-center shrink-0 overflow-hidden">
+                  <UniversityLogo
+                    logoUrl={univ.logo_url}
+                    name={univ.name}
+                    code={univ.code}
+                    className="w-full h-full object-contain rounded-xl"
+                    iconClassName="w-7 h-7 text-indigo-600"
+                  />
                 </div>
 
                 <div className="space-y-1 min-w-0">
@@ -342,12 +345,14 @@ export const UniversitiesTab: React.FC<UniversitiesTabProps> = ({ onRefresh }) =
                   Logo (PNG / JPG)
                 </label>
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0">
-                    {logoUrl ? (
-                      <img src={logoUrl} alt="" className="w-full h-full object-contain p-1" />
-                    ) : (
-                      <ImageIcon className="w-5 h-5 text-slate-400" />
-                    )}
+                  <div className="w-12 h-12 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0 overflow-hidden">
+                    <UniversityLogo
+                      logoUrl={logoUrl}
+                      name={name || 'University'}
+                      code={code || 'UNIV'}
+                      className="w-full h-full object-contain p-0.5 rounded-lg"
+                      iconClassName="w-5 h-5 text-slate-400"
+                    />
                   </div>
                   <div className="flex-1 space-y-1">
                     <input

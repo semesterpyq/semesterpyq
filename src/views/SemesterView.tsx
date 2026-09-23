@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowLeft, Layers, ArrowRight, Building2 } from 'lucide-react';
 import { Course, Semester, University, Year } from '../types';
+import { UniversityLogo } from '../components/UniversityLogo';
 
 interface SemesterViewProps {
   university: University | null;
@@ -111,15 +112,13 @@ export const SemesterView: React.FC<SemesterViewProps> = ({
         {university && (
           <div className="flex items-center gap-2 pl-1.5 pr-3 py-1 sm:pl-2 sm:pr-3.5 sm:py-1.5 rounded-full bg-white border border-slate-200/90 shadow-2xs text-slate-800 text-xs font-semibold max-w-[240px] sm:max-w-none truncate">
             <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-slate-50 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0 shadow-2xs">
-              {university.logo_url ? (
-                <img
-                  src={university.logo_url}
-                  alt={university.name}
-                  className="w-full h-full object-cover rounded-full"
-                />
-              ) : (
-                <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600" />
-              )}
+              <UniversityLogo
+                logoUrl={university.logo_url}
+                name={university.name}
+                code={university.code}
+                className="w-full h-full object-contain rounded-full"
+                iconClassName="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600"
+              />
             </div>
             <span className="truncate font-medium text-slate-800">{university.name}</span>
           </div>

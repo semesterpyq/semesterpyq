@@ -67,13 +67,45 @@ export function getDeviceId(): string {
   return id;
 }
 
-function fileToDataUrl(file: File): Promise<string> {
+export function compressImageToDataUrl(file: File, maxDimension = 400, quality = 0.85): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(reader.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const dataUrl = canvas.toDataURL(mimeType, quality);
+        resolve(dataUrl);
+      };
+      img.onerror = () => resolve(reader.result as string);
+      img.src = e.target?.result as string;
+    };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return compressImageToDataUrl(file);
 }
 
 function formatBytes(bytes: number): string {
@@ -238,20 +270,23 @@ export const api = {
 
   adminUploadLogo: async (file: File): Promise<{ success: boolean; logo_url: string }> => {
     try {
-      const res = await request<{ success: boolean; logo_url: string }>('/api/admin/upload-logo', {
-        method: 'POST',
-        body: (() => {
-          const fd = new FormData();
-          fd.append('logo', file);
-          return fd;
-        })(),
-      });
-      if (res && res.logo_url) return res;
+      const dataUrl = await compressImageToDataUrl(file);
+      // Also notify backend server if available
+      try {
+        const fd = new FormData();
+        fd.append('logo', file);
+        await request<{ success: boolean; logo_url: string }>('/api/admin/upload-logo', {
+          method: 'POST',
+          body: fd,
+        });
+      } catch {
+        // Dev server background upload optional
+      }
+      return { success: true, logo_url: dataUrl };
     } catch {
-      // fallback to data url
+      const fallbackUrl = await fileToDataUrl(file);
+      return { success: true, logo_url: fallbackUrl };
     }
-    const dataUrl = await fileToDataUrl(file);
-    return { success: true, logo_url: dataUrl };
   },
 
   // 2. COURSES
