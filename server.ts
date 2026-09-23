@@ -213,10 +213,25 @@ app.get('/api/papers/:id', (req, res) => {
 
 // View / Stream PDF
 app.get('/api/papers/:id/file', (req, res) => {
-  const paper = db.getPaperById(req.params.id);
-  if (!paper) return res.status(404).json({ error: 'Question paper not found' });
+  const paper = db.getPaperById(req.params.id) || {
+    id: req.params.id,
+    title: (req.query.title as string) || 'Examination Question Paper',
+    course_name: (req.query.courseName as string) || 'Undergraduate Course',
+    course_code: (req.query.courseCode as string) || 'ACAD',
+    subject_name: (req.query.subjectName as string) || 'Subject Paper',
+    paper_code: (req.query.paperCode as string) || req.params.id,
+    paper_year: Number(req.query.examYear || req.query.paperYear || 2024),
+    exam_year: Number(req.query.examYear || req.query.paperYear || 2024),
+    exam_session: 'Main Examination',
+    total_marks: 75,
+    duration: '3 Hours',
+  };
 
-  db.incrementPaperView(paper.id);
+  try {
+    db.incrementPaperView(paper.id);
+  } catch {
+    // ignore
+  }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Accept-Ranges', 'bytes');
@@ -256,10 +271,25 @@ app.get('/api/papers/:id/file', (req, res) => {
 
 // Download PDF
 app.get('/api/papers/:id/download', async (req, res) => {
-  const paper = db.getPaperById(req.params.id);
-  if (!paper) return res.status(404).json({ error: 'Question paper not found' });
+  const paper = db.getPaperById(req.params.id) || {
+    id: req.params.id,
+    title: (req.query.title as string) || 'Examination Question Paper',
+    course_name: (req.query.courseName as string) || 'Undergraduate Course',
+    course_code: (req.query.courseCode as string) || 'ACAD',
+    subject_name: (req.query.subjectName as string) || 'Subject Paper',
+    paper_code: (req.query.paperCode as string) || req.params.id,
+    paper_year: Number(req.query.examYear || req.query.paperYear || 2024),
+    exam_year: Number(req.query.examYear || req.query.paperYear || 2024),
+    exam_session: 'Main Examination',
+    total_marks: 75,
+    duration: '3 Hours',
+  };
 
-  db.incrementPaperDownload(paper.id);
+  try {
+    db.incrementPaperDownload(paper.id);
+  } catch {
+    // ignore
+  }
 
   const rawName = `${paper.paper_code || 'paper'}-${paper.paper_year || paper.exam_year || 2024}.pdf`;
   const safeFilename = rawName.replace(/[^a-zA-Z0-9._-]/g, '_');
