@@ -94,49 +94,34 @@ export async function initFirestoreDatabase() {
       await setDoc(settingsRef, fallbackSettings);
     }
 
-    const initMarkerRef = doc(db, 'settings', 'seed_marker_v2');
+    const initMarkerRef = doc(db, 'settings', 'seed_marker_v3');
     const initMarkerSnap = await getDoc(initMarkerRef);
 
     if (!initMarkerSnap.exists()) {
-      console.log('Seeding initial data to Firestore (v2)...');
-      // Purge any old MPU documents if present
+      // Purge any old dummy default documents from Firestore
       try {
         await deleteDoc(doc(db, 'universities', 'univ-mpu'));
+        await deleteDoc(doc(db, 'universities', 'univ-lu'));
         await deleteDoc(doc(db, 'courses', 'course-ba-mpu'));
         await deleteDoc(doc(db, 'courses', 'course-bsc-mpu'));
+        await deleteDoc(doc(db, 'courses', 'course-ba-lu'));
+        await deleteDoc(doc(db, 'courses', 'course-bsc-lu'));
+        await deleteDoc(doc(db, 'courses', 'course-bcom-lu'));
+        await deleteDoc(doc(db, 'courses', 'course-bca-lu'));
         await deleteDoc(doc(db, 'years', 'yr-bsc-mpu-1'));
         await deleteDoc(doc(db, 'years', 'yr-bsc-mpu-2'));
         await deleteDoc(doc(db, 'semesters', 'sem-mpu-bsc-1'));
         await deleteDoc(doc(db, 'semesters', 'sem-mpu-bsc-2'));
         await deleteDoc(doc(db, 'subjects', 'sub-mpu-math-1'));
       } catch (cleanErr) {
-        console.warn('Old document cleanup notice:', cleanErr);
+        console.warn('Old dummy document cleanup notice:', cleanErr);
       }
 
-      // Seed Lucknow University and clean initial records
-      for (const u of fallbackUniversities) {
-        await setDoc(doc(db, 'universities', u.id), u);
-      }
-      for (const c of fallbackCourses) {
-        await setDoc(doc(db, 'courses', c.id), c);
-      }
-      for (const y of fallbackYears) {
-        await setDoc(doc(db, 'years', y.id), y);
-      }
-      for (const s of fallbackSemesters) {
-        await setDoc(doc(db, 'semesters', s.id), s);
-      }
-      for (const sub of fallbackSubjects) {
-        await setDoc(doc(db, 'subjects', sub.id), sub);
-      }
-      for (const p of fallbackPapers) {
-        await setDoc(doc(db, 'papers', p.id), p);
-      }
       await setDoc(initMarkerRef, { seeded: true, timestamp: Date.now() });
-      console.log('Clean database seeded successfully to Firestore!');
+      console.log('Database initialized cleanly without dummy records.');
     }
   } catch (err) {
-    console.warn('Firestore initial seeding skipped or offline:', err);
+    console.warn('Firestore initialization notice:', err);
   }
 }
 

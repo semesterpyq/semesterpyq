@@ -20,246 +20,13 @@ export function createInitialData() {
   const adminSalt = crypto.randomBytes(16).toString('hex');
   const adminHash = hashPassword(process.env.ADMIN_PASSWORD || 'ratnesh@200.lbs8!', adminSalt);
 
-  // Default Universities
-  const universities = [
-    {
-      id: 'univ-lu',
-      name: 'Lucknow University',
-      code: 'LU',
-      logo_url: '/assets/logos/logo.jpg',
-      description: 'Established 1921. Premier State University in Lucknow, Uttar Pradesh.',
-      is_active: true,
-      display_order: 1,
-      created_at: new Date('2024-01-01').toISOString(),
-    },
-    {
-      id: 'univ-mpu',
-      name: 'Maa Patishwari University',
-      code: 'MPU',
-      logo_url: '/assets/logos/logo.jpg',
-      description: 'State University in Balrampur / Gonda Region, Uttar Pradesh.',
-      is_active: true,
-      display_order: 2,
-      created_at: new Date('2024-01-01').toISOString(),
-    },
-  ];
-
-  // Default Courses
-  const courses = [
-    {
-      id: 'course-ba-lu',
-      university_id: 'univ-lu',
-      name: 'Bachelor of Arts',
-      code: 'B.A.',
-      slug: 'ba-lu',
-      description: 'Undergraduate humanities program.',
-      display_order: 1,
-      is_published: true,
-      created_at: new Date('2024-01-10').toISOString(),
-    },
-    {
-      id: 'course-bsc-lu',
-      university_id: 'univ-lu',
-      name: 'Bachelor of Science',
-      code: 'B.Sc.',
-      slug: 'bsc-lu',
-      description: 'Undergraduate science degree.',
-      display_order: 2,
-      is_published: true,
-      created_at: new Date('2024-01-10').toISOString(),
-    },
-    {
-      id: 'course-bcom-lu',
-      university_id: 'univ-lu',
-      name: 'Bachelor of Commerce',
-      code: 'B.Com.',
-      slug: 'bcom-lu',
-      description: 'Undergraduate commerce degree.',
-      display_order: 3,
-      is_published: true,
-      created_at: new Date('2024-01-10').toISOString(),
-    },
-    {
-      id: 'course-bca-lu',
-      university_id: 'univ-lu',
-      name: 'Bachelor of Computer Applications',
-      code: 'BCA',
-      slug: 'bca-lu',
-      description: 'Computer applications degree.',
-      display_order: 4,
-      is_published: true,
-      created_at: new Date('2024-01-10').toISOString(),
-    },
-    {
-      id: 'course-ba-mpu',
-      university_id: 'univ-mpu',
-      name: 'Bachelor of Arts',
-      code: 'B.A.',
-      slug: 'ba-mpu',
-      description: 'Maa Patishwari University B.A Degree.',
-      display_order: 1,
-      is_published: true,
-      created_at: new Date('2024-01-10').toISOString(),
-    },
-    {
-      id: 'course-bsc-mpu',
-      university_id: 'univ-mpu',
-      name: 'Bachelor of Science',
-      code: 'B.Sc.',
-      slug: 'bsc-mpu',
-      description: 'Maa Patishwari University B.Sc Degree.',
-      display_order: 2,
-      is_published: true,
-      created_at: new Date('2024-01-10').toISOString(),
-    },
-  ];
-
-  // Default Years
-  const years = [
-    // LU - B.Sc Years
-    { id: 'yr-bsc-1', university_id: 'univ-lu', course_id: 'course-bsc-lu', name: '1st Year', year_number: 1, slug: '1st-year', display_order: 1, is_published: true, created_at: new Date().toISOString() },
-    { id: 'yr-bsc-2', university_id: 'univ-lu', course_id: 'course-bsc-lu', name: '2nd Year', year_number: 2, slug: '2nd-year', display_order: 2, is_published: true, created_at: new Date().toISOString() },
-    { id: 'yr-bsc-3', university_id: 'univ-lu', course_id: 'course-bsc-lu', name: '3rd Year', year_number: 3, slug: '3rd-year', display_order: 3, is_published: true, created_at: new Date().toISOString() },
-    
-    // LU - B.A Years
-    { id: 'yr-ba-1', university_id: 'univ-lu', course_id: 'course-ba-lu', name: '1st Year', year_number: 1, slug: '1st-year', display_order: 1, is_published: true, created_at: new Date().toISOString() },
-    { id: 'yr-ba-2', university_id: 'univ-lu', course_id: 'course-ba-lu', name: '2nd Year', year_number: 2, slug: '2nd-year', display_order: 2, is_published: true, created_at: new Date().toISOString() },
-    { id: 'yr-ba-3', university_id: 'univ-lu', course_id: 'course-ba-lu', name: '3rd Year', year_number: 3, slug: '3rd-year', display_order: 3, is_published: true, created_at: new Date().toISOString() },
-
-    // MPU - B.Sc Years
-    { id: 'yr-bsc-mpu-1', university_id: 'univ-mpu', course_id: 'course-bsc-mpu', name: '1st Year', year_number: 1, slug: '1st-year', display_order: 1, is_published: true, created_at: new Date().toISOString() },
-    { id: 'yr-bsc-mpu-2', university_id: 'univ-mpu', course_id: 'course-bsc-mpu', name: '2nd Year', year_number: 2, slug: '2nd-year', display_order: 2, is_published: true, created_at: new Date().toISOString() },
-  ];
-
-  // Default Semesters
-  const semesters = [
-    // LU B.Sc 1st Year
-    { id: 'sem-bsc-1', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-1', name: '1st Semester', semester_number: 1, display_order: 1, is_published: true, created_at: new Date().toISOString() },
-    { id: 'sem-bsc-2', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-1', name: '2nd Semester', semester_number: 2, display_order: 2, is_published: true, created_at: new Date().toISOString() },
-    
-    // LU B.Sc 2nd Year
-    { id: 'sem-bsc-3', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-2', name: '3rd Semester', semester_number: 3, display_order: 1, is_published: true, created_at: new Date().toISOString() },
-    { id: 'sem-bsc-4', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-2', name: '4th Semester', semester_number: 4, display_order: 2, is_published: true, created_at: new Date().toISOString() },
-
-    // LU B.Sc 3rd Year
-    { id: 'sem-bsc-5', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-3', name: '5th Semester', semester_number: 5, display_order: 1, is_published: true, created_at: new Date().toISOString() },
-    { id: 'sem-bsc-6', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-3', name: '6th Semester', semester_number: 6, display_order: 2, is_published: true, created_at: new Date().toISOString() },
-
-    // LU B.A 1st Year
-    { id: 'sem-ba-1', university_id: 'univ-lu', course_id: 'course-ba-lu', year_id: 'yr-ba-1', name: '1st Semester', semester_number: 1, display_order: 1, is_published: true, created_at: new Date().toISOString() },
-    { id: 'sem-ba-2', university_id: 'univ-lu', course_id: 'course-ba-lu', year_id: 'yr-ba-1', name: '2nd Semester', semester_number: 2, display_order: 2, is_published: true, created_at: new Date().toISOString() },
-
-    // MPU B.Sc 1st Year
-    { id: 'sem-mpu-bsc-1', university_id: 'univ-mpu', course_id: 'course-bsc-mpu', year_id: 'yr-bsc-mpu-1', name: '1st Semester', semester_number: 1, display_order: 1, is_published: true, created_at: new Date().toISOString() },
-    { id: 'sem-mpu-bsc-2', university_id: 'univ-mpu', course_id: 'course-bsc-mpu', year_id: 'yr-bsc-mpu-1', name: '2nd Semester', semester_number: 2, display_order: 2, is_published: true, created_at: new Date().toISOString() },
-  ];
-
-  // Default Subjects
-  const subjects = [
-    // LU B.Sc 1st Sem
-    { id: 'sub-math-1', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-1', semester_id: 'sem-bsc-1', name: 'Mathematics I: Differential Calculus', code: 'MATH-101', slug: 'calculus', description: 'Calculus and analytical geometry.', display_order: 1, is_published: true, created_at: new Date().toISOString() },
-    { id: 'sub-phy-1', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-1', semester_id: 'sem-bsc-1', name: 'Physics I: Mechanics', code: 'PHYS-101', slug: 'mechanics', description: 'Mechanics and wave motion.', display_order: 2, is_published: true, created_at: new Date().toISOString() },
-    { id: 'sub-chem-1', university_id: 'univ-lu', course_id: 'course-bsc-lu', year_id: 'yr-bsc-1', semester_id: 'sem-bsc-1', name: 'Chemistry I: Fundamentals', code: 'CHEM-101', slug: 'chemistry', description: 'Inorganic and Physical Chemistry.', display_order: 3, is_published: true, created_at: new Date().toISOString() },
-    
-    // LU B.A 1st Sem
-    { id: 'sub-eng-1', university_id: 'univ-lu', course_id: 'course-ba-lu', year_id: 'yr-ba-1', semester_id: 'sem-ba-1', name: 'English Literature: Prose & Drama', code: 'ENG-101', slug: 'english-lit', description: 'Prose and Classical Drama.', display_order: 1, is_published: true, created_at: new Date().toISOString() },
-    { id: 'sub-hin-1', university_id: 'univ-lu', course_id: 'course-ba-lu', year_id: 'yr-ba-1', semester_id: 'sem-ba-1', name: 'Hindi Sahitya: Kavya', code: 'HIN-101', slug: 'hindi-lit', description: 'Modern and Medieval Poetry.', display_order: 2, is_published: true, created_at: new Date().toISOString() },
-
-    // MPU B.Sc 1st Sem
-    { id: 'sub-mpu-math-1', university_id: 'univ-mpu', course_id: 'course-bsc-mpu', year_id: 'yr-bsc-mpu-1', semester_id: 'sem-mpu-bsc-1', name: 'Mathematics: Differential Equations', code: 'MATH-MPU-101', slug: 'diff-eq', description: 'Algebra & Differential equations.', display_order: 1, is_published: true, created_at: new Date().toISOString() },
-  ];
-
-  // Default Question Papers
-  const papers = [
-    {
-      id: 'qp-math-2024',
-      university_id: 'univ-lu',
-      course_id: 'course-bsc-lu',
-      year_id: 'yr-bsc-1',
-      semester_id: 'sem-bsc-1',
-      paper_year: 2024,
-      exam_year: 2024,
-      subject_id: 'sub-math-1',
-      title: 'Mathematics I: Differential Calculus - 2024 Examination Paper',
-      exam_session: 'Semester Examination',
-      paper_code: 'LU-BSC-M1-2024',
-      total_marks: 75,
-      duration: '3 Hours',
-      file_name: 'LU_BSc_Maths_Sem1_2024.pdf',
-      file_url: '/api/papers/qp-math-2024/file',
-      file_size: '1.2 MB',
-      is_published: true,
-      view_count: 310,
-      download_count: 185,
-      created_at: new Date('2024-05-15').toISOString(),
-    },
-    {
-      id: 'qp-math-2025',
-      university_id: 'univ-lu',
-      course_id: 'course-bsc-lu',
-      year_id: 'yr-bsc-1',
-      semester_id: 'sem-bsc-1',
-      paper_year: 2025,
-      exam_year: 2025,
-      subject_id: 'sub-math-1',
-      title: 'Mathematics I: Differential Calculus - 2025 Examination Paper',
-      exam_session: 'Semester Examination',
-      paper_code: 'LU-BSC-M1-2025',
-      total_marks: 75,
-      duration: '3 Hours',
-      file_name: 'LU_BSc_Maths_Sem1_2025.pdf',
-      file_url: '/api/papers/qp-math-2025/file',
-      file_size: '1.4 MB',
-      is_published: true,
-      view_count: 420,
-      download_count: 290,
-      created_at: new Date('2025-05-18').toISOString(),
-    },
-    {
-      id: 'qp-phy-2024',
-      university_id: 'univ-lu',
-      course_id: 'course-bsc-lu',
-      year_id: 'yr-bsc-1',
-      semester_id: 'sem-bsc-1',
-      paper_year: 2024,
-      exam_year: 2024,
-      subject_id: 'sub-phy-1',
-      title: 'Physics I: Mechanics - 2024 Examination Paper',
-      exam_session: 'Semester Examination',
-      paper_code: 'LU-BSC-P1-2024',
-      total_marks: 75,
-      duration: '3 Hours',
-      file_name: 'LU_BSc_Physics_Sem1_2024.pdf',
-      file_url: '/api/papers/qp-phy-2024/file',
-      file_size: '1.1 MB',
-      is_published: true,
-      view_count: 210,
-      download_count: 140,
-      created_at: new Date('2024-05-20').toISOString(),
-    },
-    {
-      id: 'qp-eng-2024',
-      university_id: 'univ-lu',
-      course_id: 'course-ba-lu',
-      year_id: 'yr-ba-1',
-      semester_id: 'sem-ba-1',
-      paper_year: 2024,
-      exam_year: 2024,
-      subject_id: 'sub-eng-1',
-      title: 'English Literature: Prose & Drama - 2024 Examination Paper',
-      exam_session: 'Semester Examination',
-      paper_code: 'LU-BA-ENG1-2024',
-      total_marks: 100,
-      duration: '3 Hours',
-      file_name: 'LU_BA_English_Sem1_2024.pdf',
-      file_url: '/api/papers/qp-eng-2024/file',
-      file_size: '950 KB',
-      is_published: true,
-      view_count: 180,
-      download_count: 110,
-      created_at: new Date('2024-05-22').toISOString(),
-    },
-  ];
+  // Default Collections (empty so admin control is 100% authoritative and no dummy data ever resurrects)
+  const universities: any[] = [];
+  const courses: any[] = [];
+  const years: any[] = [];
+  const semesters: any[] = [];
+  const subjects: any[] = [];
+  const papers: any[] = [];
 
   const settings = {
     site_name: 'Semester (PYQs)',
@@ -271,10 +38,10 @@ export function createInitialData() {
     favicon_url: '/assets/icons/favicon.jpg',
     hero_title: 'University Question Paper Portal',
     hero_subtitle: 'Select your university to browse courses, years, semesters, paper years, and subjects to download authentic past examination papers.',
-    notice_ticker: '📢 2024 & 2025 Semester Examination Question Papers uploaded for all affiliated Universities.',
-    about_text: 'Semester (PYQs) is an open academic repository offering instant access to previous year question papers across top state universities.',
+    notice_ticker: '📢 Semester Examination Question Papers repository. Free instant access for all students!',
+    about_text: 'Semester (PYQs) is an open academic repository offering instant access to previous year question papers.',
     seo_title: 'Semester (PYQs) - University Question Papers',
-    seo_description: 'Download authentic semester examination question papers for Lucknow University, Maa Patishwari University and affiliated colleges.',
+    seo_description: 'Download authentic semester examination question papers for degree colleges and universities.',
     ad_banner_header: false,
     ad_banner_sidebar: false,
     ad_banner_paper: false,
@@ -353,7 +120,7 @@ export class Database {
     // Ensure courses have university_id
     this.data.courses.forEach((c: any) => {
       if (!c.university_id) {
-        c.university_id = 'univ-lu';
+        c.university_id = '';
         changed = true;
       }
     });
@@ -362,16 +129,10 @@ export class Database {
     this.data.years.forEach((y: any) => {
       if (!y.university_id) {
         const parentCourse = this.data.courses.find((c: any) => c.id === y.course_id);
-        y.university_id = parentCourse?.university_id || 'univ-lu';
+        y.university_id = parentCourse?.university_id || '';
         changed = true;
       }
     });
-
-    // Ensure semesters exist for years
-    if (this.data.semesters.length === 0 && this.data.years.length > 0) {
-      this.data.semesters = createInitialData().semesters;
-      changed = true;
-    }
 
     if (changed) {
       this.save();
@@ -406,9 +167,11 @@ export class Database {
   }
 
   public createAdminSession(token: string) {
-    const expires_at = Date.now() + 7 * 24 * 60 * 60 * 1000;
+    // 1 Hour Session Lifetime (3600 seconds)
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    const expires_at = Date.now() + ONE_HOUR_MS;
     this.data.sessions = this.data.sessions.filter((s: any) => s.expires_at > Date.now());
-    this.data.sessions.push({ token, expires_at });
+    this.data.sessions.push({ token, expires_at, created_at: Date.now() });
     this.data.admin.last_login = new Date().toISOString();
     this.save();
   }
@@ -975,7 +738,7 @@ export class Database {
     const parentSub = this.data.subjects.find((s: any) => s.id === paper.subject_id);
     const parentSem = this.data.semesters.find((s: any) => s.id === (paper.semester_id || parentSub?.semester_id));
 
-    const university_id = paper.university_id || parentSub?.university_id || parentSem?.university_id || 'univ-lu';
+    const university_id = paper.university_id || parentSub?.university_id || parentSem?.university_id || '';
     const course_id = paper.course_id || parentSub?.course_id || parentSem?.course_id;
     const year_id = paper.year_id || parentSub?.year_id || parentSem?.year_id;
     const semester_id = paper.semester_id || parentSub?.semester_id;

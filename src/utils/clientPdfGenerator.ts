@@ -32,7 +32,7 @@ export function isPdfByteArray(buffer: ArrayBuffer | Uint8Array): boolean {
 export async function generateClientQuestionPaperPdf(opts: QuestionPaperPdfOptions = {}): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
 
-  const collegeName = (opts.collegeName || 'Maa Pateshwari PYQ / Semester Portal').toUpperCase();
+  const collegeName = (opts.collegeName || 'Semester (PYQs) Examination Portal').toUpperCase();
   const courseName = opts.courseName || 'Undergraduate Degree';
   const courseCode = opts.courseCode || 'DEG';
   const yearName = opts.yearName || 'Academic Year';
@@ -49,7 +49,7 @@ export async function generateClientQuestionPaperPdf(opts: QuestionPaperPdfOptio
   pdfDoc.setTitle(`${courseCode} - ${subjectName} (${examYear})`);
   pdfDoc.setAuthor(collegeName);
   pdfDoc.setSubject(`Question Paper - ${paperCode}`);
-  pdfDoc.setProducer('Maa Pateshwari PYQ Portal Examination Archival');
+  pdfDoc.setProducer('Semester (PYQs) Examination Archival Portal');
 
   // Embed standard fonts
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -324,7 +324,7 @@ export async function generateClientQuestionPaperPdf(opts: QuestionPaperPdfOptio
     color: rgb(0.7, 0.75, 0.8),
   });
 
-  const footerText = 'Official Examination Archive • Verified Academic Record • Maa Pateshwari PYQ Portal';
+  const footerText = 'Official Examination Archive • Verified Academic Record • Semester (PYQs)';
   const fWidth = fontRegular.widthOfTextAtSize(footerText, 7.5);
   page.drawText(footerText, {
     x: (width - fWidth) / 2,

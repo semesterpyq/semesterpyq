@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { api } from './api';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { api, clearAdminToken, getAdminToken, getAdminSessionRemainingMs } from './api';
 import { AdminLoginView } from './admin/AdminLoginView';
 import { AdminDashboard } from './admin/AdminDashboard';
 import { AdminUser, SiteSettings } from './types';
@@ -32,6 +32,8 @@ export default function AdminApp({ onExit }: AdminAppProps) {
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [settings, setSettings] = useState<SiteSettings>(defaultSettings);
+  const [sessionExpiredNotice, setSessionExpiredNotice] = useState<string | null>(null);
+  const lastActivityRef = useRef<number>(Date.now());
 
   const handleExit = () => {
     window.location.hash = '';
@@ -55,7 +57,7 @@ export default function AdminApp({ onExit }: AdminAppProps) {
 
   const checkAuth = useCallback(async () => {
     setCheckingAuth(true);
-    const token = localStorage.getItem('lbs_admin_token');
+    const token = getAdminToken();
     if (!token) {
       setAdminUser(null);
       setCheckingAuth(false);
@@ -67,11 +69,11 @@ export default function AdminApp({ onExit }: AdminAppProps) {
       if (profile && profile.email) {
         setAdminUser(profile);
       } else {
-        localStorage.removeItem('lbs_admin_token');
+        clearAdminToken();
         setAdminUser(null);
       }
     } catch {
-      localStorage.removeItem('lbs_admin_token');
+      clearAdminToken();
       setAdminUser(null);
     } finally {
       setCheckingAuth(false);
@@ -83,12 +85,52 @@ export default function AdminApp({ onExit }: AdminAppProps) {
     checkAuth();
   }, [loadSettings, checkAuth]);
 
+  // Track user activity & check for 1-hour session expiration
+  useEffect(() => {
+    const updateActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    window.addEventListener('mousemove', updateActivity, { passive: true });
+    window.addEventListener('keydown', updateActivity, { passive: true });
+    window.addEventListener('click', updateActivity, { passive: true });
+    window.addEventListener('touchstart', updateActivity, { passive: true });
+
+    // Periodic 1-hour session watcher (checks every 5 seconds)
+    const interval = setInterval(() => {
+      if (adminUser) {
+        const token = getAdminToken();
+        const remainingMs = getAdminSessionRemainingMs();
+        
+        // Auto log out if 1 hour has elapsed
+        if (!token || remainingMs <= 0) {
+          clearAdminToken();
+          setAdminUser(null);
+          setSessionExpiredNotice('Your administrator session has automatically expired after 1 hour of security timeout. Please log in again.');
+          try {
+            api.adminLogout().catch(() => {});
+          } catch {}
+          window.history.replaceState({}, '', '/admin.html');
+        }
+      }
+    }, 5000);
+
+    return () => {
+      window.removeEventListener('mousemove', updateActivity);
+      window.removeEventListener('keydown', updateActivity);
+      window.removeEventListener('click', updateActivity);
+      window.removeEventListener('touchstart', updateActivity);
+      clearInterval(interval);
+    };
+  }, [adminUser]);
+
   // Set Document Title
   useEffect(() => {
     document.title = `Admin Control Panel | ${settings.site_name || 'Semester (PYQs)'}`;
   }, [settings]);
 
   const handleLoginSuccess = (admin: AdminUser) => {
+    setSessionExpiredNotice(null);
     setAdminUser(admin);
     if (window.location.pathname.toLowerCase() === '/admin.html') {
       window.history.replaceState({}, '', '/admin/dashboard');
@@ -101,8 +143,9 @@ export default function AdminApp({ onExit }: AdminAppProps) {
     } catch (e) {
       console.warn('Logout notification error:', e);
     } finally {
-      localStorage.removeItem('lbs_admin_token');
+      clearAdminToken();
       setAdminUser(null);
+      setSessionExpiredNotice(null);
       window.history.replaceState({}, '', '/admin.html');
     }
   };
@@ -126,6 +169,7 @@ export default function AdminApp({ onExit }: AdminAppProps) {
       <AdminLoginView
         onLoginSuccess={handleLoginSuccess}
         onCancel={handleExit}
+        sessionExpiredNotice={sessionExpiredNotice}
       />
     );
   }

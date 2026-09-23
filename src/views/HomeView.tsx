@@ -218,48 +218,49 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     style={{ background: theme.glowColor }}
                   />
 
-                  {/* Outer Animated Ring Container */}
-                  <div className="relative flex items-center justify-center p-[3px] rounded-full my-auto animate-hue-shift">
-                    {/* Outer Glowing Neon Aura */}
+                  {/* Outer Animated Ring Container - Border & Corners Effect Only */}
+                  <div className="relative flex items-center justify-center p-[3px] rounded-full my-auto">
+                    {/* Outer Glowing Neon Aura (Corners/Outside only) */}
                     <div
-                      className="absolute -inset-1 rounded-full opacity-70 group-hover:opacity-100 blur-[5px] transition-all duration-300 animate-spin group-hover:[animation-duration:1.5s]"
+                      className="absolute -inset-1 rounded-full opacity-75 group-hover:opacity-100 blur-[5px] transition-all duration-300 animate-spin group-hover:[animation-duration:1.5s] animate-hue-shift"
                       style={{
                         background: theme.gradient,
-                        animationDuration: '3s',
+                        animationDuration: '3.5s',
                       }}
                     />
 
-                    {/* Clockwise Outer Gradient Ring */}
+                    {/* Clockwise Outer Gradient Ring (Outside/Border only) */}
                     <div
-                      className="absolute inset-0 rounded-full animate-spin group-hover:[animation-duration:1.5s] transition-all duration-300"
+                      className="absolute inset-0 rounded-full animate-spin group-hover:[animation-duration:1.5s] transition-all duration-300 animate-hue-shift"
                       style={{
                         background: theme.gradient,
-                        animationDuration: '3s',
+                        animationDuration: '3.5s',
                       }}
                     />
 
-                    {/* Counter-Clockwise Inner Accent Ring */}
+                    {/* Counter-Clockwise Inner Accent Ring (Outside/Border only) */}
                     <div
-                      className="absolute inset-[1px] rounded-full animate-spin [animation-direction:reverse] opacity-80 group-hover:opacity-100 transition-all duration-300"
+                      className="absolute inset-[1px] rounded-full animate-spin [animation-direction:reverse] opacity-80 group-hover:opacity-100 transition-all duration-300 animate-hue-shift"
                       style={{
                         background: theme.gradient,
-                        animationDuration: '2.4s',
+                        animationDuration: '2.8s',
                       }}
                     />
 
-                    {/* Static Inner Circular Logo Container (Isolates logo, maximizes visibility) */}
-                    <div className="relative z-10 w-13 h-13 sm:w-16 sm:h-16 md:w-18 md:h-18 rounded-full bg-white p-0.5 flex items-center justify-center shrink-0 overflow-hidden shadow-2xs border border-slate-100">
+                    {/* Static Clean Inner Circular Logo Container (No color shift/animation in center, 100% original logo) */}
+                    <div className="relative z-10 w-13 h-13 sm:w-16 sm:h-16 md:w-18 md:h-18 rounded-full bg-white p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-2xs border border-slate-100">
                       {univ.logo_url ? (
                         <img
                           src={univ.logo_url}
                           alt={shortName}
-                          className="w-full h-full object-contain rounded-full scale-105 group-hover:scale-110 transition-transform duration-300"
+                          className="w-full h-full object-contain rounded-full scale-100 group-hover:scale-105 transition-transform duration-300"
+                          style={{ filter: 'none' }}
                           onError={(e) => {
                             (e.target as HTMLElement).style.display = 'none';
                           }}
                         />
                       ) : (
-                        <Building2 className={`w-7 h-7 sm:w-8 sm:h-8 ${theme.iconColor} shrink-0 group-hover:scale-110 transition-transform duration-300`} />
+                        <Building2 className={`w-7 h-7 sm:w-8 sm:h-8 ${theme.iconColor} shrink-0 group-hover:scale-105 transition-transform duration-300`} />
                       )}
                     </div>
                   </div>

@@ -16,6 +16,8 @@ import {
   Lock,
   X,
   Megaphone,
+  Clock,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   AdminUser,
@@ -26,7 +28,7 @@ import {
   SiteSettings,
   DashboardStats,
 } from '../types';
-import { api, clearAdminToken } from '../api';
+import { api, clearAdminToken, getAdminSessionRemainingMs } from '../api';
 import { PdfViewerModal } from '../components/PdfViewerModal';
 
 // Admin Tab Components
@@ -62,9 +64,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentAdmin, setCurrentAdmin] = useState<AdminUser>(admin);
+  const [sessionRemainingSec, setSessionRemainingSec] = useState<number>(3600);
 
   // PDF Preview modal
   const [previewPaper, setPreviewPaper] = useState<QuestionPaper | null>(null);
+
+  // 1-Hour Session Countdown Timer
+  useEffect(() => {
+    const updateCountdown = () => {
+      const remainingMs = getAdminSessionRemainingMs();
+      setSessionRemainingSec(Math.max(0, Math.floor(remainingMs / 1000)));
+    };
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatSessionTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
+  };
 
   const loadData = async (isSilent = false) => {
     if (!isSilent) setLoading(true);
@@ -133,6 +153,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
 
           <div className="flex items-center space-x-2 sm:space-x-3">
+            {/* 1-Hour Session Timer Pill */}
+            <div
+              className={`hidden sm:inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border ${
+                sessionRemainingSec <= 300
+                  ? 'bg-amber-950/60 border-amber-800/80 text-amber-300 animate-pulse'
+                  : 'bg-slate-800/80 border-slate-700/80 text-slate-300'
+              }`}
+              title="Admin session expires automatically in 1 hour"
+            >
+              <Clock className="w-3.5 h-3.5 text-blue-400" />
+              <span>Session: <strong className="font-mono">{formatSessionTime(sessionRemainingSec)}</strong></span>
+            </div>
+
             <button
               onClick={handleManualRefresh}
               disabled={refreshing}

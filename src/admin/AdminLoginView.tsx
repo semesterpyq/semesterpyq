@@ -18,18 +18,19 @@ import { AdminUser } from '../types';
 interface AdminLoginViewProps {
   onLoginSuccess: (admin: AdminUser) => void;
   onCancel?: () => void;
+  sessionExpiredNotice?: string | null;
 }
 
-export const AdminLoginView: React.FC<AdminLoginViewProps> = ({ onLoginSuccess, onCancel }) => {
+export const AdminLoginView: React.FC<AdminLoginViewProps> = ({ onLoginSuccess, onCancel, sessionExpiredNotice }) => {
   const [step, setStep] = useState<'credentials' | 'otp'>('credentials');
-  const [email, setEmail] = useState('Ramishkji@gmail.com');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   // OTP State
   const [challengeId, setChallengeId] = useState<string>('');
   const [otp, setOtp] = useState<string>('');
-  const [maskedEmail, setMaskedEmail] = useState<string>('Ramishkji@gmail.com');
+  const [maskedEmail, setMaskedEmail] = useState<string>('');
   const [resendCooldown, setResendCooldown] = useState<number>(0);
   const [resending, setResending] = useState<boolean>(false);
 
@@ -89,11 +90,11 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({ onLoginSuccess, 
 
       if (res.requiresOtp && (res.challengeId || res.sessionKey)) {
         setChallengeId(res.challengeId || res.sessionKey || 'ch_' + Date.now());
-        setMaskedEmail(res.sentToEmail || res.maskedEmail || 'Ramishkji@gmail.com');
+        setMaskedEmail(res.sentToEmail || res.maskedEmail || cleanEmail);
         setResendCooldown(res.resendCooldown || 60);
         setOtp('');
         setStep('otp');
-        setInfoMsg(`A 6-digit verification code has been dispatched to Ramishkji@gmail.com.`);
+        setInfoMsg(`A 6-digit verification code has been dispatched to your email.`);
       } else if (res.token && res.admin) {
         setAdminToken(res.token);
         window.history.pushState({}, '', '/admin/dashboard');
@@ -159,7 +160,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({ onLoginSuccess, 
       const res = await api.adminResendOtp({ challengeId });
       if (res.success) {
         setResendCooldown(res.resendCooldown || 60);
-        setInfoMsg(res.message || 'A fresh 6-digit verification code has been dispatched to Ramishkji@gmail.com.');
+        setInfoMsg(res.message || 'A fresh 6-digit verification code has been dispatched to your email.');
         setOtp('');
         otpInputRef.current?.focus();
       } else {
@@ -215,6 +216,13 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({ onLoginSuccess, 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
         <div className="bg-slate-900 border border-slate-800 py-8 px-6 shadow-2xl rounded-2xl sm:px-10">
           {/* Feedback messages */}
+          {sessionExpiredNotice && (
+            <div className="mb-6 p-3.5 rounded-xl bg-amber-950/80 border border-amber-800 text-amber-200 text-xs flex items-center space-x-2.5">
+              <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>{sessionExpiredNotice}</span>
+            </div>
+          )}
+
           {error && (
             <div className="mb-6 p-3.5 rounded-xl bg-red-950/80 border border-red-800 text-red-200 text-xs flex items-center space-x-2.5">
               <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
@@ -244,12 +252,12 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({ onLoginSuccess, 
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    placeholder="Ramishkji@gmail.com"
+                    placeholder="Enter administrator email"
                     autoComplete="email"
                   />
                 </div>
                 <p className="mt-1.5 text-[11px] text-slate-400">
-                  Access restricted strictly to Ramishkji@gmail.com.
+                  Please enter your registered institutional administrator email.
                 </p>
               </div>
 
@@ -309,7 +317,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({ onLoginSuccess, 
                   Enter the 6-digit verification code sent to:
                 </p>
                 <p className="text-xs font-mono font-semibold text-blue-400 mt-0.5">
-                  {maskedEmail}
+                  {maskedEmail || 'your registered email'}
                 </p>
                 <p className="text-[11px] text-slate-400 mt-1">
                   Code expires in 5 minutes. Single use only.
@@ -369,7 +377,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({ onLoginSuccess, 
                   className="text-slate-400 hover:text-slate-200 inline-flex items-center space-x-1 transition-colors cursor-pointer"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Change Password</span>
+                  <span>Change Credentials</span>
                 </button>
 
                 <button
@@ -391,10 +399,10 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({ onLoginSuccess, 
           <div className="mt-6 pt-6 border-t border-slate-800/80 space-y-2 text-[11px] text-slate-400">
             <div className="flex items-center space-x-2 text-blue-400 font-semibold">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Strict Institutional Security</span>
+              <span>Institutional Access Control</span>
             </div>
             <p className="text-slate-400 leading-relaxed">
-              Authorized administrator dashboard access for Ramishkji@gmail.com.
+              All login attempts and administrative actions are encrypted and logged for security audits.
             </p>
           </div>
         </div>

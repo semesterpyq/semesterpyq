@@ -21,21 +21,41 @@ import {
 import { firestoreApi, initFirestoreDatabase } from './lib/firestore-service';
 
 const ADMIN_TOKEN_KEY = 'lbs_admin_token';
+const ADMIN_SESSION_EXPIRY_KEY = 'lbs_admin_session_expiry';
 const ADMIN_DEVICE_ID_KEY = 'lbs_device_id';
+export const ADMIN_SESSION_DURATION_MS = 60 * 60 * 1000; // Exactly 1 hour
 
 // Initialize Firestore seed if needed
 initFirestoreDatabase().catch((e) => console.warn('Firestore init background:', e));
 
 export function getAdminToken(): string | null {
-  return localStorage.getItem(ADMIN_TOKEN_KEY);
+  const token = localStorage.getItem(ADMIN_TOKEN_KEY);
+  if (!token) return null;
+  const expiry = localStorage.getItem(ADMIN_SESSION_EXPIRY_KEY);
+  if (expiry && Date.now() > Number(expiry)) {
+    clearAdminToken();
+    return null;
+  }
+  return token;
 }
 
-export function setAdminToken(token: string) {
+export function getAdminSessionRemainingMs(): number {
+  const token = localStorage.getItem(ADMIN_TOKEN_KEY);
+  if (!token) return 0;
+  const expiry = localStorage.getItem(ADMIN_SESSION_EXPIRY_KEY);
+  if (!expiry) return 0;
+  const remaining = Number(expiry) - Date.now();
+  return remaining > 0 ? remaining : 0;
+}
+
+export function setAdminToken(token: string, durationMs: number = ADMIN_SESSION_DURATION_MS) {
   localStorage.setItem(ADMIN_TOKEN_KEY, token);
+  localStorage.setItem(ADMIN_SESSION_EXPIRY_KEY, (Date.now() + durationMs).toString());
 }
 
 export function clearAdminToken() {
   localStorage.removeItem(ADMIN_TOKEN_KEY);
+  localStorage.removeItem(ADMIN_SESSION_EXPIRY_KEY);
 }
 
 export function getDeviceId(): string {
@@ -948,69 +968,38 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
-      if (res && res.requiresOtp) return res;
-      if (res && res.token) return res;
-    } catch {
-      // Fallback for static host / GitHub Pages
+      if (res) return res;
+    } catch (err: any) {
+      return { error: err.message || 'Server connection error. Please try again.' };
     }
 
-    // Strict Credential Check for Administrator - ALWAYS requires OTP Verification step
-    if (
-      email === 'ramishkji@gmail.com' &&
-      (password === 'ratnesh@200.lbs8!' || password === 'admin@123' || password === 'admin')
-    ) {
-      const challengeId = 'ch_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-      return {
-        success: true,
-        requiresOtp: true,
-        challengeId,
-        sentToEmail: 'Ramishkji@gmail.com',
-        maskedEmail: 'ra*****ji@gmail.com',
-        expiresInSeconds: 300,
-        resendCooldown: 60,
-      };
-    }
-
-    return { error: 'Invalid admin email or password. Access is restricted.' };
+    return { error: 'Authentication failed. Please verify your administrator email and password.' };
   },
 
   adminVerifyOtp: async (arg1: any, arg2?: string) => {
     const sessionKey = typeof arg1 === 'string' ? arg1 : arg1?.sessionKey || arg1?.challengeId;
     const otp = typeof arg1 === 'string' ? arg2 : arg1?.otp;
     try {
-      return await request<any>('/api/admin/verify-otp', {
+      const res = await request<any>('/api/admin/verify-otp', {
         method: 'POST',
         body: JSON.stringify({ sessionKey, otp }),
       });
-    } catch {
-      // In static mode, verify 6-digit OTP
-      if (otp && otp.trim().length === 6) {
-        const token = 'lbs_sec_session_' + Date.now();
-        setAdminToken(token);
-        return {
-          success: true,
-          token,
-          admin: {
-            id: 'admin-primary',
-            email: 'Ramishkji@gmail.com',
-            name: 'Portal Administrator',
-            role: 'super_admin',
-          },
-        };
-      }
-      return { error: 'Invalid 6-digit verification code. Please check and retry.' };
+      return res;
+    } catch (err: any) {
+      return { error: err.message || 'Verification failed. Please enter the valid 6-digit OTP sent to your Gmail.' };
     }
   },
 
   adminResendOtp: async (arg1: any) => {
     const sessionKey = typeof arg1 === 'string' ? arg1 : arg1?.sessionKey || arg1?.challengeId;
     try {
-      return await request<any>('/api/admin/resend-otp', {
+      const res = await request<any>('/api/admin/resend-otp', {
         method: 'POST',
         body: JSON.stringify({ sessionKey }),
       });
-    } catch {
-      return { success: true, message: 'Code resent to Ramishkji@gmail.com' };
+      return res;
+    } catch (err: any) {
+      return { error: err.message || 'Failed to resend verification code. Please wait and try again.' };
     }
   },
 };
