@@ -12,11 +12,7 @@ import {
   AlertCircle,
   RotateCw,
   Maximize,
-  Maximize2,
-  Minimize2,
   ArrowLeft,
-  FileText,
-  Share2,
 } from 'lucide-react';
 import { QuestionPaper } from '../types';
 import { pdfjsLib, downloadPaperPdf } from '../utils/pdfViewer';
@@ -36,7 +32,6 @@ interface PageDimension {
 }
 
 export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }) => {
-  const modalWrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pageContainerRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const canvasRefs = useRef<{ [key: number]: HTMLCanvasElement | null }>({});
@@ -54,7 +49,6 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
   const [blobPdfUrl, setBlobPdfUrl] = useState<string | null>(null);
   const [jumpPageInput, setJumpPageInput] = useState<string>('1');
   const [basePageDimensions, setBasePageDimensions] = useState<{ [key: number]: PageDimension }>({});
-  const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
 
   const scaleRef = useRef<number>(1.0);
   scaleRef.current = scale;
@@ -66,7 +60,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
     viewportFocalY: number;
   } | null>(null);
 
-  // Multi-touch pinch state
+  // Multi-touch pinch state for mobile / touchscreens
   const touchStateRef = useRef<{
     isPinching: boolean;
     initialDistance: number;
@@ -103,18 +97,17 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
     };
   }, [blobPdfUrl]);
 
-  // Compute responsive fit-to-width scale
+  // Compute responsive edge-to-edge fit-to-width scale (No side margins/gaps)
   const calculateFitWidthScale = useCallback((viewportWidth: number) => {
     if (!containerRef.current || !viewportWidth) return 1.0;
     const containerWidth = containerRef.current.clientWidth;
-    // Responsive padding based on device size
-    const padding = containerWidth < 480 ? 16 : containerWidth < 768 ? 32 : 48;
-    const availableWidth = Math.max(containerWidth - padding, 240);
+    // Edge-to-edge available width (minimal buffer to avoid micro-scrollbar)
+    const availableWidth = Math.max(containerWidth - 6, 200);
     const fitScale = availableWidth / viewportWidth;
     return Number(fitScale.toFixed(2));
   }, []);
 
-  // Update zoom with focal anchor to eliminate jumping and keep viewport steady
+  // Update zoom with focal anchor to eliminate jumping
   const setZoomWithAnchor = useCallback(
     (
       newScale: number,
@@ -253,6 +246,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
           data: pdfBytes,
           cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@' + pdfjsLib.version + '/cmaps/',
           cMapPacked: true,
+          standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@' + pdfjsLib.version + '/standard_fonts/',
         });
 
         const doc = await loadingTask.promise;
@@ -289,7 +283,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
     };
   }, [pdfFileUrl, calculateFitWidthScale, paper]);
 
-  // Clean page rendering onto canvas
+  // Ultra-crisp High-DPI canvas rendering (Fixes all blurriness on mobile/desktop/retina)
   const renderSinglePage = useCallback(
     async (pageNum: number, pdf: any, currentScale: number, currentRotation: number) => {
       const canvas = canvasRefs.current[pageNum];
@@ -305,22 +299,39 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
 
       try {
         const page = await pdf.getPage(pageNum);
-        const viewport = page.getViewport({ scale: currentScale, rotation: currentRotation });
+        
+        // Use devicePixelRatio or supersample to minimum 2.0 for razor-sharp text and images
+        const pixelRatio = Math.max(window.devicePixelRatio || 1, 2.0);
+        
+        // High-resolution viewport for rasterizing vector fonts and crisp images
+        const highResViewport = page.getViewport({
+          scale: currentScale * pixelRatio,
+          rotation: currentRotation,
+        });
+
+        // Exact CSS display size
+        const cssWidth = Math.floor(highResViewport.width / pixelRatio);
+        const cssHeight = Math.floor(highResViewport.height / pixelRatio);
+
+        // Physical canvas buffer dimensions
+        canvas.width = Math.floor(highResViewport.width);
+        canvas.height = Math.floor(highResViewport.height);
+
+        // Match display style to logical CSS pixels
+        canvas.style.width = `${cssWidth}px`;
+        canvas.style.height = `${cssHeight}px`;
+
         const context = canvas.getContext('2d', { alpha: false });
         if (!context) return;
 
-        const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1.5), 2.5);
-
-        canvas.width = Math.floor(viewport.width * dpr);
-        canvas.height = Math.floor(viewport.height * dpr);
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
-        canvas.style.height = `${Math.floor(viewport.height)}px`;
-
-        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+        // Optimize image smoothing quality
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
 
         const renderContext = {
           canvasContext: context,
-          viewport: viewport,
+          viewport: highResViewport,
+          intent: 'display',
         };
 
         const renderTask = page.render(renderContext);
@@ -387,7 +398,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
     const container = containerRef.current;
     const targetEl = pageContainerRefs.current[pageNum];
     if (container && targetEl) {
-      const targetTop = Math.max(0, targetEl.offsetTop - 16);
+      const targetTop = Math.max(0, targetEl.offsetTop - 8);
       container.scrollTo({
         top: targetTop,
         behavior: 'smooth',
@@ -462,7 +473,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
     container.addEventListener('touchmove', handleTouchMove, { passive: false });
     container.addEventListener('touchend', handleTouchEnd);
     container.addEventListener('touchcancel', handleTouchEnd);
-    container.addEventListener('wheel', handleWheel, { passive: false });
+    container.addEventListener('wheel', handleWheel);
 
     return () => {
       container.removeEventListener('touchstart', handleTouchStart);
@@ -546,20 +557,6 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
     }
   };
 
-  const toggleFullScreen = () => {
-    if (!document.fullscreenElement) {
-      if (modalWrapperRef.current?.requestFullscreen) {
-        modalWrapperRef.current.requestFullscreen();
-        setIsFullScreen(true);
-      }
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-        setIsFullScreen(false);
-      }
-    }
-  };
-
   const handlePrint = () => {
     const targetUrl = blobPdfUrl || pdfFileUrl;
     const printWindow = window.open(targetUrl, '_blank');
@@ -568,286 +565,292 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
 
   return (
     <div
-      id="pdf-viewer-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xs p-0 sm:p-2 md:p-4 select-none"
+      id="pdf-viewer-root"
+      style={{
+        width: '100vw',
+        height: '100dvh',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        margin: 0,
+        padding: 0,
+        borderRadius: 0,
+        zIndex: 99999,
+      }}
+      className="bg-[#202124] text-white flex flex-col overflow-hidden select-none m-0 p-0"
     >
-      <div
-        ref={modalWrapperRef}
-        id="pdf-viewer-modal"
-        className={`bg-[#202124] w-full flex flex-col shadow-2xl overflow-hidden border border-[#3c4043] ${
-          isFullScreen
-            ? 'fixed inset-0 z-50 rounded-none h-[100dvh]'
-            : 'rounded-none sm:rounded-xl max-w-6xl h-[100dvh] sm:h-[96vh]'
-        }`}
+      {/* ============================================================
+          FIXED GOOGLE DRIVE / CHROME STYLE TOP TOOLBAR
+          Properly respects Mobile Safe-Area & Viewport Bounds
+      ============================================================ */}
+      <header
+        style={{
+          paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))',
+          paddingLeft: 'max(0.5rem, env(safe-area-inset-left, 0px))',
+          paddingRight: 'max(0.5rem, env(safe-area-inset-right, 0px))',
+        }}
+        className="w-full flex items-center justify-between px-2 sm:px-4 pb-2 bg-[#323639] border-b border-[#444746] text-white shrink-0 gap-1.5 sm:gap-2 z-50 shadow-md transition-all"
       >
-        {/* ============================================================
-            GOOGLE DRIVE / CHROME STYLE TOP TOOLBAR
-        ============================================================ */}
-        <header className="flex items-center justify-between px-2.5 sm:px-4 py-2 bg-[#323639] border-b border-[#444746] text-white shrink-0 gap-2 z-20 shadow-md">
-          {/* Left: Document Info & Back */}
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-full hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white transition-colors cursor-pointer"
-              title="Close (Esc)"
-            >
-              <ArrowLeft className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
-            </button>
+        {/* Left: Document Info & Back */}
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1 max-w-[40%] sm:max-w-none">
+          <button
+            onClick={onClose}
+            className="p-1 sm:p-1.5 rounded-full hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
+            title="Close (Esc)"
+          >
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
 
-            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-sm bg-[#ea4335] flex items-center justify-center shrink-0 shadow-xs">
-              <span className="text-white font-black text-[9px] sm:text-[10px] tracking-wider">PDF</span>
-            </div>
-
-            <div className="min-w-0">
-              <h2 className="font-medium text-xs sm:text-sm truncate text-slate-100 leading-tight max-w-[130px] xs:max-w-[200px] sm:max-w-[260px] md:max-w-md">
-                {paper.title}
-              </h2>
-              <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-slate-400 mt-0.5">
-                <span className="truncate max-w-[100px] sm:max-w-[160px]">
-                  {paper.subject_name || paper.course_name || 'Question Paper'}
-                </span>
-                <span>•</span>
-                <span className="text-[#8ab4f8] font-medium">
-                  {paper.paper_year || paper.exam_year || 2024}
-                </span>
-              </div>
-            </div>
+          <div className="w-5 h-5 sm:w-7 sm:h-7 rounded-xs bg-[#ea4335] flex items-center justify-center shrink-0 shadow-xs">
+            <span className="text-white font-black text-[8px] sm:text-[10px] tracking-wider">PDF</span>
           </div>
 
-          {/* Center / Controls: Page Navigation & Zoom Tools */}
-          <div className="flex items-center gap-1 sm:gap-2">
-            {/* Page Navigation */}
-            <div className="flex items-center bg-[#282a2d] px-1 py-0.5 rounded-md border border-[#444746]">
-              <button
-                onClick={handlePrevPage}
-                disabled={currentPage <= 1 || loading}
-                className="p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
-                title="Previous Page (←)"
-              >
-                <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
-
-              <form onSubmit={handlePageJumpSubmit} className="flex items-center px-1">
-                <input
-                  type="text"
-                  value={jumpPageInput}
-                  onChange={(e) => setJumpPageInput(e.target.value)}
-                  onBlur={handlePageJumpSubmit}
-                  disabled={numPages <= 1 || loading}
-                  className="w-5 sm:w-7 py-0 text-center text-xs font-medium bg-transparent text-white border-none focus:ring-1 focus:ring-[#8ab4f8] focus:bg-[#18191a] rounded focus:outline-hidden"
-                />
-                <span className="text-[11px] sm:text-xs text-slate-400 font-normal select-none">
-                  / {numPages || 1}
-                </span>
-              </form>
-
-              <button
-                onClick={handleNextPage}
-                disabled={currentPage >= numPages || loading}
-                className="p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
-                title="Next Page (→)"
-              >
-                <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
+          <div className="min-w-0 truncate">
+            <h2 className="font-medium text-xs sm:text-sm truncate text-slate-100 leading-tight">
+              {paper.title}
+            </h2>
+            <div className="hidden xs:flex items-center gap-1 text-[10px] sm:text-xs text-slate-400 mt-0.5 truncate">
+              <span className="truncate">
+                {paper.subject_name || paper.course_name || 'Question Paper'}
+              </span>
+              <span>•</span>
+              <span className="text-[#8ab4f8] font-medium shrink-0">
+                {paper.paper_year || paper.exam_year || 2024}
+              </span>
             </div>
+          </div>
+        </div>
 
-            <div className="h-4 w-px bg-[#444746] hidden xs:block" />
-
-            {/* Zoom Controls */}
-            <div className="flex items-center bg-[#282a2d] px-1 py-0.5 rounded-md border border-[#444746]">
-              <button
-                onClick={handleZoomOut}
-                disabled={scale <= 0.35 || loading}
-                className="p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
-                title="Zoom Out (-)"
-              >
-                <ZoomOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
-
-              <button
-                onClick={handleResetZoom100}
-                className="px-1.5 py-0.5 rounded hover:bg-white/10 text-[11px] sm:text-xs font-mono font-medium text-slate-200 hover:text-white transition-colors cursor-pointer"
-                title="Reset Zoom to 100%"
-              >
-                {Math.round(scale * 100)}%
-              </button>
-
-              <button
-                onClick={handleZoomIn}
-                disabled={scale >= 3.5 || loading}
-                className="p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
-                title="Zoom In (+)"
-              >
-                <ZoomIn className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
-            </div>
-
-            <div className="h-4 w-px bg-[#444746] hidden sm:block" />
-
-            {/* Fit Width Button */}
+        {/* Center / Controls: Page Navigation & Zoom Tools */}
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          {/* Page Navigation */}
+          <div className="flex items-center bg-[#282a2d] px-0.5 sm:px-1 py-0.5 rounded-md border border-[#444746]">
             <button
-              onClick={handleFitWidth}
-              className={`hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border transition-all cursor-pointer ${
-                fitMode === 'width'
-                  ? 'bg-[#1a73e8] border-[#1a73e8] text-white shadow-xs'
-                  : 'bg-[#282a2d] border-[#444746] hover:bg-white/10 text-slate-300 hover:text-white'
-              }`}
-              title="Fit to Width"
+              onClick={handlePrevPage}
+              disabled={currentPage <= 1 || loading}
+              className="p-0.5 sm:p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
+              title="Previous Page (←)"
             >
-              <Maximize className="w-3.5 h-3.5" />
-              <span>Fit Width</span>
+              <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
-            {/* Rotate */}
+            <form onSubmit={handlePageJumpSubmit} className="flex items-center px-0.5">
+              <input
+                type="text"
+                value={jumpPageInput}
+                onChange={(e) => setJumpPageInput(e.target.value)}
+                onBlur={handlePageJumpSubmit}
+                disabled={numPages <= 1 || loading}
+                className="w-4 sm:w-7 py-0 text-center text-[11px] sm:text-xs font-medium bg-transparent text-white border-none focus:ring-1 focus:ring-[#8ab4f8] focus:bg-[#18191a] rounded focus:outline-hidden"
+              />
+              <span className="text-[10px] sm:text-xs text-slate-400 font-normal select-none">
+                /{numPages || 1}
+              </span>
+            </form>
+
             <button
-              onClick={handleRotate}
-              className="p-1.5 rounded-md bg-[#282a2d] border border-[#444746] hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer hidden md:inline-flex"
-              title="Rotate 90°"
+              onClick={handleNextPage}
+              disabled={currentPage >= numPages || loading}
+              className="p-0.5 sm:p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
+              title="Next Page (→)"
             >
-              <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           </div>
 
-          {/* Right: Actions (Fullscreen, Download, Close) */}
-          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-            <button
-              onClick={handlePrint}
-              disabled={loading}
-              className="hidden lg:inline-flex p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
-              title="Print"
-            >
-              <Printer className="w-4 h-4" />
-            </button>
+          <div className="h-3.5 w-px bg-[#444746] hidden xs:block" />
 
-            <a
-              href={blobPdfUrl || pdfFileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:inline-flex p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
-              title="Open in new window"
-            >
-              <ExternalLink className="w-4 h-4" />
-            </a>
-
+          {/* Zoom Controls */}
+          <div className="flex items-center bg-[#282a2d] px-0.5 sm:px-1 py-0.5 rounded-md border border-[#444746]">
             <button
-              onClick={toggleFullScreen}
-              className="p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer hidden sm:inline-flex"
-              title={isFullScreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              onClick={handleZoomOut}
+              disabled={scale <= 0.35 || loading}
+              className="p-0.5 sm:p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
+              title="Zoom Out (-)"
             >
-              {isFullScreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              <ZoomOut className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
 
             <button
-              onClick={handleDownloadClick}
-              disabled={downloading}
-              className="inline-flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-[#1a73e8] hover:bg-[#1557b0] active:scale-95 text-white text-xs font-medium shadow-sm transition-all cursor-pointer disabled:opacity-75"
-              title="Download PDF"
+              onClick={handleResetZoom100}
+              className="px-1 sm:px-1.5 py-0.5 rounded hover:bg-white/10 text-[10px] sm:text-xs font-mono font-medium text-slate-200 hover:text-white transition-colors cursor-pointer"
+              title="Reset Zoom to 100%"
             >
-              {downloading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Download className="w-3.5 h-3.5" />
-              )}
-              <span className="hidden xs:inline">Download</span>
+              {Math.round(scale * 100)}%
             </button>
 
             <button
-              onClick={onClose}
-              className="p-1.5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer ml-0.5"
-              title="Close (Esc)"
+              onClick={handleZoomIn}
+              disabled={scale >= 3.5 || loading}
+              className="p-0.5 sm:p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
+              title="Zoom In (+)"
             >
-              <X className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
+              <ZoomIn className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
           </div>
-        </header>
 
-        {/* ============================================================
-            MAIN VIEWER CANVAS AREA (Centered PDF, Smooth Scroll, No Overflow)
-        ============================================================ */}
-        <main
-          ref={containerRef}
-          onScroll={handleScroll}
-          className="flex-1 w-full bg-[#202124] overflow-y-auto overflow-x-auto p-2 sm:p-6 md:p-8 flex flex-col items-center select-none"
-          style={{
-            WebkitOverflowScrolling: 'touch',
-            overscrollBehavior: 'contain',
-            touchAction: 'pan-x pan-y pinch-zoom',
-          }}
-        >
-          {loading && (
-            <div className="flex flex-col items-center justify-center my-auto text-slate-400 gap-3 py-20">
-              <Loader2 className="w-8 h-8 text-[#8ab4f8] animate-spin" />
-              <p className="text-xs sm:text-sm font-medium text-slate-300 animate-pulse">
-                Loading PDF document...
-              </p>
+          <div className="h-3.5 w-px bg-[#444746] hidden sm:block" />
+
+          {/* Fit Width Button */}
+          <button
+            onClick={handleFitWidth}
+            className={`hidden sm:flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border transition-all cursor-pointer ${
+              fitMode === 'width'
+                ? 'bg-[#1a73e8] border-[#1a73e8] text-white shadow-xs'
+                : 'bg-[#282a2d] border-[#444746] hover:bg-white/10 text-slate-300 hover:text-white'
+            }`}
+            title="Fit to Width"
+          >
+            <Maximize className="w-3.5 h-3.5" />
+            <span>Fit Width</span>
+          </button>
+
+          {/* Rotate */}
+          <button
+            onClick={handleRotate}
+            className="p-1 rounded-md bg-[#282a2d] border border-[#444746] hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer hidden md:inline-flex"
+            title="Rotate 90°"
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Right: Actions (Download, Print, Close) */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          <button
+            onClick={handlePrint}
+            disabled={loading}
+            className="hidden lg:inline-flex p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+            title="Print"
+          >
+            <Printer className="w-4 h-4" />
+          </button>
+
+          <a
+            href={blobPdfUrl || pdfFileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden sm:inline-flex p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+            title="Open in new window"
+          >
+            <ExternalLink className="w-4 h-4" />
+          </a>
+
+          <button
+            onClick={handleDownloadClick}
+            disabled={downloading}
+            className="inline-flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-[#1a73e8] hover:bg-[#1557b0] active:scale-95 text-white text-[11px] sm:text-xs font-medium shadow-sm transition-all cursor-pointer disabled:opacity-75"
+            title="Download PDF"
+          >
+            {downloading ? (
+              <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" />
+            ) : (
+              <Download className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+            )}
+            <span className="hidden sm:inline">Download</span>
+          </button>
+
+          <button
+            onClick={onClose}
+            className="p-1 sm:p-1.5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            title="Close (Esc)"
+          >
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
+        </div>
+      </header>
+
+      {/* ============================================================
+          MAIN VIEWER CANVAS AREA (Crisp High-DPI, 100% space)
+      ============================================================ */}
+      <main
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="w-full flex-1 bg-[#202124] overflow-y-auto overflow-x-auto p-0 m-0 flex flex-col items-center select-none"
+        style={{
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
+          touchAction: 'pan-x pan-y pinch-zoom',
+        }}
+      >
+        {loading && (
+          <div className="flex flex-col items-center justify-center my-auto text-slate-400 gap-3 py-20">
+            <Loader2 className="w-8 h-8 text-[#8ab4f8] animate-spin" />
+            <p className="text-xs sm:text-sm font-medium text-slate-300 animate-pulse">
+              Loading high-resolution PDF...
+            </p>
+          </div>
+        )}
+
+        {error && !loading && (
+          <div className="max-w-md w-full my-auto text-center p-6 bg-[#282a2d] border border-[#3c4043] rounded-xl space-y-4 shadow-xl">
+            <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-6 h-6" />
             </div>
-          )}
+            <div>
+              <h4 className="font-bold text-sm sm:text-base text-white">Document Notice</h4>
+              <p className="text-xs text-slate-400 mt-1">{error}</p>
+            </div>
+            <div className="flex justify-center pt-2">
+              <button
+                onClick={handleDownloadClick}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full bg-[#1a73e8] hover:bg-[#1557b0] text-white text-xs font-semibold transition-colors cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download PDF Document</span>
+              </button>
+            </div>
+          </div>
+        )}
 
-          {error && !loading && (
-            <div className="max-w-md w-full my-auto text-center p-6 bg-[#282a2d] border border-[#3c4043] rounded-xl space-y-4 shadow-xl">
-              <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
-                <AlertCircle className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="font-bold text-sm sm:text-base text-white">Document Notice</h4>
-                <p className="text-xs text-slate-400 mt-1">{error}</p>
-              </div>
-              <div className="flex justify-center pt-2">
-                <button
-                  onClick={handleDownloadClick}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full bg-[#1a73e8] hover:bg-[#1557b0] text-white text-xs font-semibold transition-colors cursor-pointer"
+        {/* Continuous High-DPI Centered Pages Stack */}
+        {!loading && !error && pdfDoc && (
+          <div className="w-full flex flex-col items-center gap-3 sm:gap-4 py-2 sm:py-4 m-0">
+            {Array.from({ length: numPages }, (_, idx) => idx + 1).map((pageNum) => {
+              const baseDim = basePageDimensions[pageNum] || { width: 612, height: 792 };
+              const isRotated = rotation === 90 || rotation === 270;
+              const pageWidth = isRotated ? baseDim.height * scale : baseDim.width * scale;
+              const pageHeight = isRotated ? baseDim.width * scale : baseDim.height * scale;
+
+              return (
+                <div
+                  key={pageNum}
+                  ref={(el) => {
+                    pageContainerRefs.current[pageNum] = el;
+                  }}
+                  className="relative flex flex-col items-center mx-auto transition-all duration-75"
+                  style={{
+                    width: pageWidth ? `${Math.floor(pageWidth)}px` : 'auto',
+                    minHeight: pageHeight ? `${Math.floor(pageHeight)}px` : 'auto',
+                    maxWidth: '100%',
+                  }}
                 >
-                  <Download className="w-4 h-4" />
-                  <span>Download PDF Document</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Continuous Centered Pages Stack */}
-          {!loading && !error && pdfDoc && (
-            <div className="flex flex-col items-center gap-4 sm:gap-6 md:gap-8 pb-12 my-auto max-w-full">
-              {Array.from({ length: numPages }, (_, idx) => idx + 1).map((pageNum) => {
-                const baseDim = basePageDimensions[pageNum] || { width: 612, height: 792 };
-                const isRotated = rotation === 90 || rotation === 270;
-                const pageWidth = isRotated ? baseDim.height * scale : baseDim.width * scale;
-                const pageHeight = isRotated ? baseDim.width * scale : baseDim.height * scale;
-
-                return (
-                  <div
-                    key={pageNum}
-                    ref={(el) => {
-                      pageContainerRefs.current[pageNum] = el;
-                    }}
-                    className="relative flex flex-col items-center mx-auto transition-all duration-75"
-                    style={{
-                      width: pageWidth ? `${Math.floor(pageWidth)}px` : 'auto',
-                      minHeight: pageHeight ? `${Math.floor(pageHeight)}px` : 'auto',
-                      maxWidth: '100%',
-                    }}
-                  >
-                    {/* Centered White PDF Sheet with Chrome / Google Drive Box Shadow */}
-                    <div className="bg-white rounded-xs sm:rounded-sm shadow-[0_4px_24px_rgba(0,0,0,0.6)] ring-1 ring-black/40 overflow-hidden max-w-full">
-                      <canvas
-                        ref={(el) => {
-                          canvasRefs.current[pageNum] = el;
-                        }}
-                        className="block max-w-full h-auto bg-white"
-                      />
-                    </div>
-
-                    {numPages > 1 && (
-                      <span className="mt-2 text-[10px] sm:text-[11px] font-medium text-slate-400 select-none">
-                        Page {pageNum} of {numPages}
-                      </span>
-                    )}
+                  {/* Razor-sharp High-DPI PDF Canvas */}
+                  <div className="bg-white shadow-[0_2px_12px_rgba(0,0,0,0.5)] overflow-hidden max-w-full">
+                    <canvas
+                      ref={(el) => {
+                        canvasRefs.current[pageNum] = el;
+                      }}
+                      className="block max-w-full h-auto bg-white"
+                      style={{
+                        imageRendering: '-webkit-optimize-contrast',
+                      }}
+                    />
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </main>
-      </div>
+
+                  {numPages > 1 && (
+                    <span className="mt-1 text-[10px] sm:text-[11px] font-medium text-slate-400 select-none">
+                      Page {pageNum} of {numPages}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </main>
     </div>
   );
 };

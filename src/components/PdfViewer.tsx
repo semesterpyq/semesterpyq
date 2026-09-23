@@ -83,6 +83,25 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     viewportFocalY: number;
   } | null>(null);
 
+  // Multi-touch pinch state for mobile / touchscreens
+  const touchStateRef = useRef<{
+    isPinching: boolean;
+    initialDistance: number;
+    initialScale: number;
+    initialMidX: number;
+    initialMidY: number;
+    initialScrollLeft: number;
+    initialScrollTop: number;
+  }>({
+    isPinching: false,
+    initialDistance: 0,
+    initialScale: 1.0,
+    initialMidX: 0,
+    initialMidY: 0,
+    initialScrollLeft: 0,
+    initialScrollTop: 0,
+  });
+
   useEffect(() => {
     return () => {
       if (generatedBlobUrl) {
@@ -105,8 +124,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const getFitWidthScale = useCallback((viewportWidth: number) => {
     if (!containerRef.current || !viewportWidth) return 1.0;
     const containerWidth = containerRef.current.clientWidth;
-    const padding = containerWidth < 480 ? 16 : containerWidth < 768 ? 32 : 48;
-    const availableWidth = Math.max(containerWidth - padding, 240);
+    const availableWidth = Math.max(containerWidth - 6, 200);
     const targetScale = availableWidth / viewportWidth;
     return Number(targetScale.toFixed(2));
   }, []);
@@ -272,6 +290,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     loadDocument();
   }, [loadDocument]);
 
+  // Ultra-sharp High-DPI canvas rendering for PdfViewer
   const renderSinglePage = useCallback(
     async (pageNum: number, pdf: any, currentScale: number, currentRotation: number) => {
       const canvas = canvasRefs.current[pageNum];
@@ -287,22 +306,32 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
 
       try {
         const page = await pdf.getPage(pageNum);
-        const viewport = page.getViewport({ scale: currentScale, rotation: currentRotation });
+        const pixelRatio = Math.max(window.devicePixelRatio || 1, 2.0);
+
+        const highResViewport = page.getViewport({
+          scale: currentScale * pixelRatio,
+          rotation: currentRotation,
+        });
+
+        const cssWidth = Math.floor(highResViewport.width / pixelRatio);
+        const cssHeight = Math.floor(highResViewport.height / pixelRatio);
+
+        canvas.width = Math.floor(highResViewport.width);
+        canvas.height = Math.floor(highResViewport.height);
+
+        canvas.style.width = `${cssWidth}px`;
+        canvas.style.height = `${cssHeight}px`;
+
         const context = canvas.getContext('2d', { alpha: false });
         if (!context) return;
 
-        const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1.5), 2.5);
-
-        canvas.width = Math.floor(viewport.width * dpr);
-        canvas.height = Math.floor(viewport.height * dpr);
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
-        canvas.style.height = `${Math.floor(viewport.height)}px`;
-
-        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
 
         const renderContext = {
           canvasContext: context,
-          viewport: viewport,
+          viewport: highResViewport,
+          intent: 'display',
         };
 
         const renderTask = page.render(renderContext);
@@ -367,7 +396,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     const container = containerRef.current;
     const targetEl = pageContainerRefs.current[pageNum];
     if (container && targetEl) {
-      const targetTop = Math.max(0, targetEl.offsetTop - 16);
+      const targetTop = Math.max(0, targetEl.offsetTop - 8);
       container.scrollTo({
         top: targetTop,
         behavior: 'smooth',
@@ -377,10 +406,57 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
   }, []);
 
-  // Wheel zoom
+  // Multi-Touch Pinch on mobile
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        const rect = container.getBoundingClientRect();
+
+        touchStateRef.current.isPinching = true;
+        touchStateRef.current.initialDistance = dist;
+        touchStateRef.current.initialScale = scaleRef.current;
+        touchStateRef.current.initialMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
+        touchStateRef.current.initialMidY = (t1.clientY + t2.clientY) / 2 - rect.top;
+        touchStateRef.current.initialScrollLeft = container.scrollLeft;
+        touchStateRef.current.initialScrollTop = container.scrollTop;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && touchStateRef.current.isPinching) {
+        e.preventDefault();
+
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+
+        if (touchStateRef.current.initialDistance > 0) {
+          const ratio = dist / touchStateRef.current.initialDistance;
+          const targetScale = Math.min(
+            Math.max(touchStateRef.current.initialScale * ratio, 0.35),
+            3.5
+          );
+
+          setZoomWithAnchor(targetScale, {
+            clientX: (t1.clientX + t2.clientX) / 2,
+            clientY: (t1.clientY + t2.clientY) / 2,
+          });
+        }
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (touchStateRef.current.isPinching && e.touches.length < 2) {
+        touchStateRef.current.isPinching = false;
+        touchStateRef.current.initialDistance = 0;
+      }
+    };
 
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
@@ -391,8 +467,19 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       }
     };
 
-    container.addEventListener('wheel', handleWheel, { passive: false });
-    return () => container.removeEventListener('wheel', handleWheel);
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd);
+    container.addEventListener('touchcancel', handleTouchEnd);
+    container.addEventListener('wheel', handleWheel);
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchEnd);
+      container.removeEventListener('wheel', handleWheel);
+    };
   }, [setZoomWithAnchor]);
 
   // Resize listener
@@ -464,26 +551,34 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   return (
     <div
       ref={wrapperRef}
-      className={`flex flex-col bg-[#202124] text-slate-100 rounded-xl overflow-hidden shadow-2xl border border-[#3c4043] transition-all select-none ${className} ${
-        isFullScreen ? 'fixed inset-0 z-50 rounded-none w-screen h-screen' : ''
+      className={`flex flex-col bg-[#202124] text-slate-100 overflow-hidden shadow-xl border border-[#3c4043] transition-all select-none ${className} ${
+        isFullScreen ? 'fixed inset-0 z-50 rounded-none w-screen h-screen' : 'w-full rounded-none sm:rounded-lg'
       }`}
       style={{ minHeight: isFullScreen ? '100dvh' : minHeight }}
     >
       {/* ============================================================
           GOOGLE DRIVE / CHROME STYLE TOP TOOLBAR
+          Properly respects Mobile Safe-Area & Viewport Bounds
       ============================================================ */}
-      <header className="flex items-center justify-between px-2.5 sm:px-4 py-2 bg-[#323639] border-b border-[#444746] text-white z-20 shrink-0 gap-2 shadow-md">
+      <header
+        style={{
+          paddingTop: isFullScreen ? 'max(0.5rem, env(safe-area-inset-top, 0px))' : undefined,
+          paddingLeft: isFullScreen ? 'max(0.5rem, env(safe-area-inset-left, 0px))' : undefined,
+          paddingRight: isFullScreen ? 'max(0.5rem, env(safe-area-inset-right, 0px))' : undefined,
+        }}
+        className="w-full flex items-center justify-between px-2 sm:px-4 py-2 bg-[#323639] border-b border-[#444746] text-white z-20 shrink-0 gap-1.5 sm:gap-2 shadow-md"
+      >
         {/* Left: Document Info */}
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-sm bg-[#ea4335] flex items-center justify-center shrink-0 shadow-xs">
-            <span className="text-white font-black text-[9px] sm:text-[10px] tracking-wider">PDF</span>
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1 max-w-[40%] sm:max-w-none">
+          <div className="w-5 h-5 sm:w-7 sm:h-7 rounded-xs bg-[#ea4335] flex items-center justify-center shrink-0 shadow-xs">
+            <span className="text-white font-black text-[8px] sm:text-[10px] tracking-wider">PDF</span>
           </div>
-          <div className="min-w-0">
-            <h2 className="text-xs sm:text-sm font-medium truncate text-slate-100 leading-snug max-w-[130px] xs:max-w-[200px] sm:max-w-[260px] md:max-w-md">
+          <div className="min-w-0 truncate">
+            <h2 className="text-xs sm:text-sm font-medium truncate text-slate-100 leading-snug">
               {title}
             </h2>
-            <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-slate-400">
-              <span className="truncate max-w-[120px] sm:max-w-none">
+            <div className="hidden xs:flex items-center gap-1 text-[10px] sm:text-xs text-slate-400 truncate">
+              <span className="truncate">
                 {paperDetails?.subjectName || 'Question Paper'}
               </span>
             </div>
@@ -491,58 +586,58 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         </div>
 
         {/* Center: Controls (Pagination, Zoom, Fit) */}
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {/* Pagination */}
-          <div className="flex items-center bg-[#282a2d] px-1 py-0.5 rounded-md border border-[#444746]">
+          <div className="flex items-center bg-[#282a2d] px-0.5 sm:px-1 py-0.5 rounded-md border border-[#444746]">
             <button
               onClick={prevPage}
               disabled={currentPage <= 1 || loading}
-              className="p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
+              className="p-0.5 sm:p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
               title="Previous Page"
             >
               <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
-            <form onSubmit={handlePageJumpSubmit} className="flex items-center px-1">
+            <form onSubmit={handlePageJumpSubmit} className="flex items-center px-0.5">
               <input
                 type="text"
                 value={jumpPageInput}
                 onChange={(e) => setJumpPageInput(e.target.value)}
                 onBlur={handlePageJumpSubmit}
                 disabled={totalPages <= 1 || loading}
-                className="w-5 sm:w-7 py-0 text-center text-xs font-medium bg-transparent text-white border-none focus:ring-1 focus:ring-[#8ab4f8] focus:bg-[#18191a] rounded focus:outline-hidden"
+                className="w-4 sm:w-7 py-0 text-center text-[11px] sm:text-xs font-medium bg-transparent text-white border-none focus:ring-1 focus:ring-[#8ab4f8] focus:bg-[#18191a] rounded focus:outline-hidden"
               />
-              <span className="text-[11px] sm:text-xs text-slate-400 font-normal select-none">
-                / {totalPages || 1}
+              <span className="text-[10px] sm:text-xs text-slate-400 font-normal select-none">
+                /{totalPages || 1}
               </span>
             </form>
 
             <button
               onClick={nextPage}
               disabled={currentPage >= totalPages || loading}
-              className="p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
+              className="p-0.5 sm:p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
               title="Next Page"
             >
               <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           </div>
 
-          <div className="h-4 w-px bg-[#444746] hidden xs:block" />
+          <div className="h-3.5 w-px bg-[#444746] hidden xs:block" />
 
           {/* Zoom Controls */}
-          <div className="flex items-center bg-[#282a2d] px-1 py-0.5 rounded-md border border-[#444746]">
+          <div className="flex items-center bg-[#282a2d] px-0.5 sm:px-1 py-0.5 rounded-md border border-[#444746]">
             <button
               onClick={zoomOut}
               disabled={scale <= 0.35 || loading}
-              className="p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
+              className="p-0.5 sm:p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
               title="Zoom Out (-)"
             >
-              <ZoomOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <ZoomOut className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
 
             <button
               onClick={handleResetZoom100}
-              className="px-1.5 py-0.5 rounded hover:bg-white/10 text-[11px] sm:text-xs font-mono font-medium text-slate-200 hover:text-white transition-colors cursor-pointer"
+              className="px-1 sm:px-1.5 py-0.5 rounded hover:bg-white/10 text-[10px] sm:text-xs font-mono font-medium text-slate-200 hover:text-white transition-colors cursor-pointer"
               title="Reset to 100%"
             >
               {Math.round(scale * 100)}%
@@ -551,19 +646,19 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             <button
               onClick={zoomIn}
               disabled={scale >= 3.5 || loading}
-              className="p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
+              className="p-0.5 sm:p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
               title="Zoom In (+)"
             >
-              <ZoomIn className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <ZoomIn className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
           </div>
 
-          <div className="h-4 w-px bg-[#444746] hidden sm:block" />
+          <div className="h-3.5 w-px bg-[#444746] hidden sm:block" />
 
           {/* Fit Width */}
           <button
             onClick={handleFitWidth}
-            className={`hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border transition-all cursor-pointer ${
+            className={`hidden sm:flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border transition-all cursor-pointer ${
               fitMode === 'width'
                 ? 'bg-[#1a73e8] border-[#1a73e8] text-white shadow-xs'
                 : 'bg-[#282a2d] border-[#444746] hover:bg-white/10 text-slate-300 hover:text-white'
@@ -577,10 +672,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           {/* Rotate */}
           <button
             onClick={rotateClockwise}
-            className="p-1.5 rounded-md bg-[#282a2d] border border-[#444746] hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer hidden md:inline-flex"
+            className="p-1 rounded-md bg-[#282a2d] border border-[#444746] hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer hidden md:inline-flex"
             title="Rotate 90°"
           >
-            <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <RotateCw className="w-3.5 h-3.5" />
           </button>
         </div>
 
@@ -621,23 +716,23 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             <a
               href={effectiveDownloadUrl}
               download={effectiveDownloadFilename}
-              className="inline-flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-[#1a73e8] hover:bg-[#1557b0] active:scale-95 text-white text-xs font-medium shadow-sm transition-all cursor-pointer"
+              className="inline-flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-[#1a73e8] hover:bg-[#1557b0] active:scale-95 text-white text-[11px] sm:text-xs font-medium shadow-sm transition-all cursor-pointer"
               title="Download PDF"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden xs:inline">Download</span>
+              <Download className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              <span className="hidden sm:inline">Download</span>
             </a>
           )}
         </div>
       </header>
 
       {/* ============================================================
-          MAIN VIEWER CANVAS AREA (Centered, Smooth Scroll)
+          MAIN VIEWER CANVAS AREA (Ultra-sharp High-DPI, Smooth Scroll)
       ============================================================ */}
       <main
         ref={containerRef}
         onScroll={handleScroll}
-        className="flex-1 w-full bg-[#202124] overflow-y-auto overflow-x-auto p-2 sm:p-6 md:p-8 flex flex-col items-center select-none"
+        className="flex-1 w-full bg-[#202124] overflow-y-auto overflow-x-auto p-0 m-0 flex flex-col items-center select-none"
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
@@ -648,7 +743,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           <div className="flex flex-col items-center justify-center my-auto text-slate-400 gap-3 py-20">
             <Loader2 className="w-8 h-8 text-[#8ab4f8] animate-spin" />
             <p className="text-xs sm:text-sm font-medium text-slate-300 animate-pulse">
-              Loading PDF document...
+              Loading high-resolution PDF...
             </p>
           </div>
         )}
@@ -684,7 +779,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
 
         {/* Continuous Centered Pages Stack */}
         {!loading && !error && pdfDoc && (
-          <div className="flex flex-col items-center gap-4 sm:gap-6 md:gap-8 pb-12 my-auto max-w-full">
+          <div className="w-full flex flex-col items-center gap-3 sm:gap-4 py-2 sm:py-4 m-0">
             {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNum) => {
               const baseDim = basePageDimensions[pageNum] || { width: 612, height: 792 };
               const isRotated = rotation === 90 || rotation === 270;
@@ -704,17 +799,20 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
                     maxWidth: '100%',
                   }}
                 >
-                  <div className="bg-white rounded-xs sm:rounded-sm shadow-[0_4px_24px_rgba(0,0,0,0.6)] ring-1 ring-black/40 overflow-hidden max-w-full">
+                  <div className="bg-white shadow-[0_2px_12px_rgba(0,0,0,0.5)] overflow-hidden max-w-full">
                     <canvas
                       ref={(el) => {
                         canvasRefs.current[pageNum] = el;
                       }}
                       className="block max-w-full h-auto bg-white"
+                      style={{
+                        imageRendering: '-webkit-optimize-contrast',
+                      }}
                     />
                   </div>
 
                   {totalPages > 1 && (
-                    <span className="mt-2 text-[10px] sm:text-[11px] font-medium text-slate-400 select-none">
+                    <span className="mt-1 text-[10px] sm:text-[11px] font-medium text-slate-400 select-none">
                       Page {pageNum} of {totalPages}
                     </span>
                   )}
