@@ -15,7 +15,9 @@ self.addEventListener('fetch', (event) => {
       (async () => {
         try {
           const cache = await caches.open(PDF_CACHE_NAME);
-          const cachedResponse = await cache.match(url.pathname) || await cache.match(event.request);
+          const cachedResponse =
+            (await cache.match(url.pathname, { ignoreSearch: true })) ||
+            (await cache.match(event.request, { ignoreSearch: true }));
           if (cachedResponse) {
             return cachedResponse;
           }

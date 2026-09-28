@@ -171,9 +171,7 @@ export const getPaperFileName = (paper: DownloadablePaper): string => {
 const PDF_CACHE_NAME = 'lbs-pdf-cache-v1';
 
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/pdf-sw.js').catch(() => {});
-  });
+  navigator.serviceWorker.register('/pdf-sw.js').catch(() => {});
 }
 
 export const cachePaperPdfInBrowserCache = async (paper: DownloadablePaper): Promise<void> => {
@@ -196,6 +194,21 @@ export const cachePaperPdfInBrowserCache = async (paper: DownloadablePaper): Pro
       if (isPdfByteArray(bytes)) {
         pdfBytes = bytes;
       }
+    }
+
+    if (!pdfBytes) {
+      pdfBytes = await generateClientQuestionPaperPdf({
+        collegeName: paper.course_name || 'Semester (PYQs) Examination Portal',
+        courseName: paper.course_name,
+        courseCode: paper.course_code,
+        subjectName: paper.subject_name || paper.title,
+        subjectCode: paper.subject_code || paper.paper_code,
+        paperTitle: paper.title,
+        examYear: paper.paper_year || paper.exam_year || 2024,
+        paperCode: paper.paper_code || 'QP',
+        totalMarks: paper.total_marks || 75,
+        duration: paper.duration || '3 Hours',
+      });
     }
 
     if (!pdfBytes) return;
@@ -237,6 +250,18 @@ export const openPaperPdfInBrowser = async (paper: DownloadablePaper): Promise<v
   syncPaperToServerCache(paper);
   await cachePaperPdfInBrowserCache(paper);
 
+  if (typeof window !== 'undefined' && 'serviceWorker' in navigator && !navigator.serviceWorker.controller) {
+    try {
+      await navigator.serviceWorker.register('/pdf-sw.js');
+      await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((resolve) => setTimeout(resolve, 400)),
+      ]);
+    } catch {
+      // ignore
+    }
+  }
+
   // If paper is Google Drive
   if (parsed.isGoogleDrive && parsed.previewUrl) {
     const driveWin = window.open(parsed.previewUrl, '_blank');
@@ -246,18 +271,8 @@ export const openPaperPdfInBrowser = async (paper: DownloadablePaper): Promise<v
     return;
   }
 
-  // Pass fallback metadata in query string and open real database filename endpoint in default browser PDF viewer
-  const queryParams = new URLSearchParams();
-  if (paper.title) queryParams.set('title', paper.title);
-  if (paper.course_name) queryParams.set('courseName', paper.course_name);
-  if (paper.course_code) queryParams.set('courseCode', paper.course_code);
-  if (paper.subject_name) queryParams.set('subjectName', paper.subject_name);
-  if (paper.paper_code) queryParams.set('paperCode', paper.paper_code);
-  if (paper.paper_year || paper.exam_year) {
-    queryParams.set('paperYear', String(paper.paper_year || paper.exam_year));
-  }
-  const qs = queryParams.toString();
-  const viewerUrl = `/api/papers/${encodeURIComponent(paper.id)}/view/${encodeURIComponent(fileName)}${qs ? `?${qs}` : ''}`;
+  // Open real database filename endpoint in default browser PDF viewer
+  const viewerUrl = `/api/papers/${encodeURIComponent(paper.id)}/view/${encodeURIComponent(fileName)}`;
 
   const win = window.open(viewerUrl, '_blank');
   if (!win) {

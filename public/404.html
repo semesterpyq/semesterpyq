@@ -3,14 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <title>Semester (PYQs)</title>
-    <meta name="google-adsense-account" content="ca-pub-5868909493875712" />
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5868909493875712"
-     crossorigin="anonymous"></script>
+    <meta name="google-adsense-account" content="ca-pub-5868909493875712">
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5868909493875712" crossorigin="anonymous"></script>
     <script>
-      // Single Page Apps for GitHub Pages
-      // Redirects 404 routes back to root index.html
-      var path = window.location.pathname + window.location.search;
-      window.location.replace('/#' + path);
+      (async function () {
+        var path = window.location.pathname;
+        var search = window.location.search || '';
+        if (path.indexOf('/api/papers/') === 0 && path.indexOf('/view/') !== -1 && 'serviceWorker' in navigator && 'caches' in window) {
+          try {
+            var cache = await caches.open('lbs-pdf-cache-v1');
+            var matched = await cache.match(path, { ignoreSearch: true });
+            if (matched && !sessionStorage.getItem('sw_reloaded_' + path)) {
+              sessionStorage.setItem('sw_reloaded_' + path, '1');
+              await navigator.serviceWorker.register('/pdf-sw.js');
+              await navigator.serviceWorker.ready;
+              window.location.reload();
+              return;
+            }
+          } catch (e) {}
+        }
+        window.location.replace('/#' + path + search);
+      })();
     </script>
   </head>
   <body>
