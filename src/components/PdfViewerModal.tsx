@@ -944,7 +944,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
         }}
       >
         {/* ============================================================
-            FLOATING BOTTOM PAGE INDICATOR: Page X of Y
+            FLOATING BOTTOM PAGE INDICATOR: Page X / Y
         ============================================================ */}
         {!loading && !error && numPages > 0 && (
           <div
@@ -952,23 +952,25 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
               showPagePill ? 'opacity-100' : 'opacity-0 pointer-events-none'
             }`}
           >
-            <div className="bg-slate-900/85 backdrop-blur-md text-white text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-lg border border-white/15 flex items-center gap-2">
+            <div className="bg-slate-900/90 backdrop-blur-md text-white text-xs font-medium px-3.5 py-1.5 rounded-full shadow-lg border border-slate-700/50 flex items-center gap-2 select-none">
               <button
                 onClick={() => scrollToPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage <= 1}
-                className="p-0.5 rounded hover:bg-white/20 disabled:opacity-30 cursor-pointer"
+                className="p-1 rounded-full hover:bg-white/20 disabled:opacity-30 transition-colors cursor-pointer"
                 title="Previous Page"
+                aria-label="Previous Page"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
-              <span>
-                Page {currentPage} of {numPages}
+              <span className="tabular-nums tracking-wide px-0.5">
+                Page {currentPage} / {numPages}
               </span>
               <button
                 onClick={() => scrollToPage(Math.min(numPages, currentPage + 1))}
                 disabled={currentPage >= numPages}
-                className="p-0.5 rounded hover:bg-white/20 disabled:opacity-30 cursor-pointer"
+                className="p-1 rounded-full hover:bg-white/20 disabled:opacity-30 transition-colors cursor-pointer"
                 title="Next Page"
+                aria-label="Next Page"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>

@@ -151,3 +151,78 @@ export const downloadPaperPdf = async (paper: DownloadablePaper): Promise<boolea
     return false;
   }
 };
+
+export const openPaperPdfInBrowser = async (paper: DownloadablePaper): Promise<void> => {
+  const parsed = parsePdfUrl(paper.file_url);
+
+  // If paper is Google Drive
+  if (parsed.isGoogleDrive && parsed.previewUrl) {
+    window.open(parsed.previewUrl, '_blank');
+    return;
+  }
+
+  // If paper has base64 data URL
+  if (paper.file_url && paper.file_url.startsWith('data:')) {
+    try {
+      const parts = paper.file_url.split(',');
+      const base64Data = (parts[1] || parts[0]).trim().replace(/[\s\r\n]/g, '');
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      if (isPdfByteArray(bytes)) {
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const blobUrl = window.URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank');
+        return;
+      }
+    } catch (e) {
+      console.warn('Base64 parse error in openPaperPdfInBrowser:', e);
+    }
+  }
+
+  // If paper has direct file URL
+  const candidateUrl = paper.file_url || `/api/papers/${paper.id}/file`;
+  if (candidateUrl && !candidateUrl.startsWith('data:')) {
+    try {
+      const res = await fetch(candidateUrl);
+      if (res.ok) {
+        const arrayBuf = await res.arrayBuffer();
+        const uint8 = new Uint8Array(arrayBuf);
+        if (isPdfByteArray(uint8)) {
+          const blob = new Blob([arrayBuf], { type: 'application/pdf' });
+          const blobUrl = window.URL.createObjectURL(blob);
+          window.open(blobUrl, '_blank');
+          return;
+        }
+      }
+    } catch {
+      window.open(candidateUrl, '_blank');
+      return;
+    }
+  }
+
+  // Client-side generated PDF fallback
+  try {
+    const pdfBytes = await generateClientQuestionPaperPdf({
+      collegeName: paper.course_name || 'Semester (PYQs) Examination Portal',
+      courseName: paper.course_name,
+      courseCode: paper.course_code,
+      subjectName: paper.subject_name || paper.title,
+      subjectCode: paper.subject_code || paper.paper_code,
+      paperTitle: paper.title,
+      examYear: paper.paper_year || paper.exam_year || 2024,
+      paperCode: paper.paper_code || 'QP',
+      totalMarks: paper.total_marks || 75,
+      duration: paper.duration || '3 Hours',
+    });
+
+    const blob = new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' });
+    const blobUrl = window.URL.createObjectURL(blob);
+    window.open(blobUrl, '_blank');
+  } catch (err) {
+    console.error('Failed to open PDF in browser:', err);
+  }
+};
+

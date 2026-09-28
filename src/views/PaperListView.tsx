@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeft, Download, Eye, FileText, CheckCircle, Loader2, Building2 } from 'lucide-react';
 import { Course, QuestionPaper, Semester, Subject, University, Year } from '../types';
 import { PdfViewerModal } from '../components/PdfViewerModal';
-import { downloadPaperPdf } from '../utils/pdfViewer';
+import { downloadPaperPdf, openPaperPdfInBrowser } from '../utils/pdfViewer';
 import { UniversityLogo } from '../components/UniversityLogo';
 
 interface PaperListViewProps {
@@ -60,7 +60,20 @@ export const PaperListView: React.FC<PaperListViewProps> = ({
   onBack,
 }) => {
   const [selectedPdf, setSelectedPdf] = useState<QuestionPaper | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const handleViewPaper = async (paper: QuestionPaper) => {
+    setOpeningId(paper.id);
+    try {
+      await openPaperPdfInBrowser(paper);
+    } catch (e) {
+      console.warn('Browser direct open fallback:', e);
+      setSelectedPdf(paper);
+    } finally {
+      setTimeout(() => setOpeningId(null), 600);
+    }
+  };
 
   const handleDownload = async (paper: QuestionPaper) => {
     setDownloadingId(paper.id);
@@ -171,11 +184,16 @@ export const PaperListView: React.FC<PaperListViewProps> = ({
                 {/* Small & Unique Action Buttons */}
                 <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                   <button
-                    onClick={() => setSelectedPdf(paper)}
-                    className={`group/btn inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 rounded-full ${theme.viewBtn} font-semibold text-xs transition-all duration-200 shadow-2xs hover:shadow-xs cursor-pointer`}
+                    onClick={() => handleViewPaper(paper)}
+                    disabled={openingId === paper.id}
+                    className={`group/btn inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 rounded-full ${theme.viewBtn} font-semibold text-xs transition-all duration-200 shadow-2xs hover:shadow-xs cursor-pointer disabled:opacity-75`}
                   >
-                    <Eye className="w-3.5 h-3.5 shrink-0 transition-transform duration-200 group-hover/btn:scale-110" />
-                    <span>View Paper</span>
+                    {openingId === paper.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                    ) : (
+                      <Eye className="w-3.5 h-3.5 shrink-0 transition-transform duration-200 group-hover/btn:scale-110" />
+                    )}
+                    <span>{openingId === paper.id ? 'Opening...' : 'View Paper'}</span>
                   </button>
 
                   <button

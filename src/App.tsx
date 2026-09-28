@@ -11,6 +11,7 @@ import { PaperYearView } from './views/PaperYearView';
 import { SubjectView } from './views/SubjectView';
 import { PaperListView } from './views/PaperListView';
 import { PdfViewerModal } from './components/PdfViewerModal';
+import { openPaperPdfInBrowser } from './utils/pdfViewer';
 import { api } from './api';
 import {
   University,
@@ -549,8 +550,12 @@ export default function App() {
     }
   };
 
-  const handleSelectPaperFromSearch = (paper: any) => {
-    setSelectedPaperForModal(paper);
+  const handleSelectPaperFromSearch = async (paper: any) => {
+    try {
+      await openPaperPdfInBrowser(paper);
+    } catch {
+      setSelectedPaperForModal(paper);
+    }
   };
 
   // BACK NAVIGATION HANDLERS
