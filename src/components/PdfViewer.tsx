@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState, useCallback, useLayoutEffect } from 'react';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import React, { useEffect, useRef, useState, useCallback, useLayoutEffect, useMemo } from 'react';
+import { pdfjsLib } from '../utils/pdfViewer';
 import {
   ChevronLeft,
   ChevronRight,
@@ -10,29 +10,17 @@ import {
   Minimize2,
   Download,
   ExternalLink,
-  RefreshCw,
   AlertCircle,
   Loader2,
   Printer,
   Maximize,
 } from 'lucide-react';
-import {
-  isPdfByteArray,
-  generateClientQuestionPaperPdf,
-  QuestionPaperPdfOptions,
-} from '../utils/clientPdfGenerator';
+import { isPdfByteArray } from '../utils/clientPdfGenerator';
 import { parsePdfUrl } from '../utils/pdfUrlHelper';
-
-try {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '4.10.38'}/legacy/build/pdf.worker.min.mjs`;
-} catch (e) {
-  console.warn('PDF.js worker setup note:', e);
-}
 
 interface PdfViewerProps {
   url?: string;
   title?: string;
-  paperDetails?: QuestionPaperPdfOptions;
   downloadUrl?: string;
   downloadFilename?: string;
   className?: string;
@@ -48,7 +36,6 @@ interface PageDimension {
 export const PdfViewer: React.FC<PdfViewerProps> = ({
   url,
   title = 'Examination Question Paper',
-  paperDetails,
   downloadUrl,
   downloadFilename,
   className = '',
@@ -60,12 +47,18 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const contentWrapperRef = useRef<HTMLDivElement>(null);
   const pageContainerRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const canvasRefs = useRef<{ [key: number]: HTMLCanvasElement | null }>({});
+  const textLayerRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
+
   const renderedPagesRef = useRef<Set<number>>(new Set());
   const activeRenderTasks = useRef<{ [key: number]: any }>({});
   const renderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const pillTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastWidthRef = useRef<number>(typeof window !== 'undefined' ? window.innerWidth : 0);
+  const scrollRafRef = useRef<number | null>(null);
+  const isRenderingRef = useRef<boolean>(false);
+  const renderQueueRef = useRef<number[]>([]);
+  const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
 
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -81,12 +74,13 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const [jumpPageInput, setJumpPageInput] = useState('1');
   const [basePageDimensions, setBasePageDimensions] = useState<{ [key: number]: PageDimension }>({});
   const [showPagePill, setShowPagePill] = useState<boolean>(true);
-  const [isGoogleDriveDoc, setIsGoogleDriveDoc] = useState<boolean>(false);
 
-  const parsedPdfInfo = parsePdfUrl(url);
+  const parsedPdfInfo = useMemo(() => parsePdfUrl(url), [url]);
 
   const scaleRef = useRef<number>(1.0);
   scaleRef.current = scale;
+  const currentPageRef = useRef<number>(1);
+  currentPageRef.current = currentPage;
   const pdfDocRef = useRef<any>(null);
   pdfDocRef.current = pdfDoc;
   const rotationRef = useRef<number>(0);
@@ -106,60 +100,46 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     isPinching: boolean;
     initialDistance: number;
     initialScale: number;
+    currentPinchScale: number;
     focalDocX: number;
     focalDocY: number;
     viewportFocalX: number;
     viewportFocalY: number;
+    pinchRafId: number | null;
   }>({
     isPinching: false,
     initialDistance: 0,
     initialScale: 1.0,
+    currentPinchScale: 1.0,
     focalDocX: 0,
     focalDocY: 0,
     viewportFocalX: 0,
     viewportFocalY: 0,
+    pinchRafId: null,
   });
 
-  useEffect(() => {
-    return () => {
-      if (generatedBlobUrl) URL.revokeObjectURL(generatedBlobUrl);
-      if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
-      if (pillTimerRef.current) clearTimeout(pillTimerRef.current);
-      if (observerRef.current) observerRef.current.disconnect();
-      Object.values(activeRenderTasks.current).forEach((task) => {
-        try {
-          task?.cancel();
-        } catch {
-          // ignore
-        }
-      });
-    };
-  }, [generatedBlobUrl]);
-
-  const effectiveDownloadUrl = generatedBlobUrl || downloadUrl || url || '#';
-  const effectiveDownloadFilename =
-    downloadFilename || (title ? `${title.replace(/\s+/g, '_')}.pdf` : 'QuestionPaper.pdf');
-
-  const getFitWidthScale = useCallback((viewportWidth: number) => {
-    if (!containerRef.current || !viewportWidth) return 1.0;
+  // Calculate Fit to Width
+  const calculateFitWidthScale = useCallback((pageWidth: number) => {
+    if (!containerRef.current || !pageWidth) return 1.0;
     const containerWidth = containerRef.current.clientWidth || window.innerWidth;
     const isMobile = window.innerWidth < 640;
-    const paddingOffset = isMobile ? 8 : 16;
+    const paddingOffset = isMobile ? 0 : 24;
     const availableWidth = Math.max(containerWidth - paddingOffset, 200);
-    const fitScale = availableWidth / viewportWidth;
+    const fitScale = availableWidth / pageWidth;
     return Number(fitScale.toFixed(3));
   }, []);
 
-  // Debounced High-DPI rasterization on settle
+  // Debounce high-res render on zoom settle
   const scheduleHighResRender = useCallback((targetScale: number) => {
     if (renderTimeoutRef.current) {
       clearTimeout(renderTimeoutRef.current);
     }
     renderTimeoutRef.current = setTimeout(() => {
       setRenderScale(targetScale);
-    }, 150);
+    }, 100);
   }, []);
 
+  // Set zoom maintaining anchor
   const setZoomWithAnchor = useCallback(
     (
       newScale: number,
@@ -213,10 +193,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
   }, [scale]);
 
-  // Ultra-sharp High-DPI canvas rendering optimized for smooth 60fps
+  // Render Page with Canvas and Searchable TextLayer
   const renderSinglePage = useCallback(
     async (pageNum: number, pdf: any, targetScale: number, currentRotation: number) => {
       const canvas = canvasRefs.current[pageNum];
+      const textLayerDiv = textLayerRefs.current[pageNum];
       if (!pdf || !canvas) return;
 
       if (activeRenderTasks.current[pageNum]) {
@@ -231,26 +212,26 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         const page = await pdf.getPage(pageNum);
         const isMobile = window.innerWidth < 640;
         const dpr = window.devicePixelRatio || 1;
-        const maxDprCap = isMobile ? 1.5 : 2.0;
+        const maxDprCap = isMobile ? 1.6 : 2.0;
         const effectiveDpr = Math.min(dpr, maxDprCap);
 
-        const highResViewport = page.getViewport({
+        const viewport = page.getViewport({
           scale: targetScale * effectiveDpr,
           rotation: currentRotation,
         });
 
-        canvas.width = Math.floor(highResViewport.width);
-        canvas.height = Math.floor(highResViewport.height);
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
 
         const context = canvas.getContext('2d', { alpha: false });
         if (!context) return;
 
         context.imageSmoothingEnabled = true;
-        context.imageSmoothingQuality = 'medium';
+        context.imageSmoothingQuality = 'high';
 
         const renderContext = {
           canvasContext: context,
-          viewport: highResViewport,
+          viewport: viewport,
           intent: 'display',
         };
 
@@ -258,9 +239,32 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         activeRenderTasks.current[pageNum] = renderTask;
         await renderTask.promise;
         renderedPagesRef.current.add(pageNum);
+
+        // Searchable textLayer
+        if (textLayerDiv) {
+          textLayerDiv.innerHTML = '';
+          const cssViewport = page.getViewport({
+            scale: targetScale,
+            rotation: currentRotation,
+          });
+
+          try {
+            const textContent = await page.getTextContent();
+            if (pdfjsLib.TextLayer) {
+              const textLayer = new pdfjsLib.TextLayer({
+                textContentSource: textContent,
+                container: textLayerDiv,
+                viewport: cssViewport,
+              });
+              await textLayer.render();
+            }
+          } catch (textErr) {
+            console.debug('TextLayer render note:', textErr);
+          }
+        }
       } catch (err: any) {
         if (err?.name !== 'RenderingCancelledException') {
-          console.error(`[PdfViewer] Page ${pageNum} render error:`, err);
+          console.error(`[PdfViewer] Canvas error for page ${pageNum}:`, err);
         }
       } finally {
         activeRenderTasks.current[pageNum] = null;
@@ -269,128 +273,162 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     []
   );
 
-  const loadDocument = useCallback(async () => {
+  const processRenderQueue = useCallback(async () => {
+    if (isRenderingRef.current) return;
+    if (renderQueueRef.current.length === 0) return;
+
+    isRenderingRef.current = true;
+    while (renderQueueRef.current.length > 0) {
+      const nextPageNum = renderQueueRef.current.shift();
+      if (nextPageNum && pdfDocRef.current) {
+        await renderSinglePage(
+          nextPageNum,
+          pdfDocRef.current,
+          renderScaleRef.current,
+          rotationRef.current
+        );
+      }
+    }
+    isRenderingRef.current = false;
+  }, [renderSinglePage]);
+
+  const enqueuePageRender = useCallback(
+    (pageNum: number) => {
+      if (!renderQueueRef.current.includes(pageNum)) {
+        renderQueueRef.current.push(pageNum);
+      }
+      processRenderQueue();
+    },
+    [processRenderQueue]
+  );
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (generatedBlobUrl) URL.revokeObjectURL(generatedBlobUrl);
+      if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
+      if (pillTimerRef.current) clearTimeout(pillTimerRef.current);
+      if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+      if (touchStateRef.current.pinchRafId) cancelAnimationFrame(touchStateRef.current.pinchRafId);
+      if (observerRef.current) observerRef.current.disconnect();
+      renderQueueRef.current = [];
+      Object.values(activeRenderTasks.current).forEach((task) => {
+        try {
+          task?.cancel();
+        } catch {
+          // ignore
+        }
+      });
+    };
+  }, [generatedBlobUrl]);
+
+  // Load PDF Document
+  useEffect(() => {
+    let isCancelled = false;
     setLoading(true);
     setError(null);
+    setCurrentPage(1);
+    currentPageRef.current = 1;
     renderedPagesRef.current.clear();
+    renderQueueRef.current = [];
 
-    if (parsedPdfInfo.isGoogleDrive && parsedPdfInfo.previewUrl) {
-      setIsGoogleDriveDoc(true);
-      setLoading(false);
-      return;
-    }
-
-    setIsGoogleDriveDoc(false);
-    let pdfBytes: Uint8Array | null = null;
-
-    if (url && url.startsWith('data:')) {
-      try {
-        const base64Data = url.split(',')[1];
-        const binaryString = atob(base64Data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        if (isPdfByteArray(bytes)) {
-          pdfBytes = bytes;
-        }
-      } catch (e) {
-        console.warn('Failed parsing data URL:', e);
+    const loadDocument = async () => {
+      if (!url) {
+        setError('No question paper PDF file provided');
+        setLoading(false);
+        return;
       }
-    }
 
-    if (!pdfBytes && url) {
-      try {
-        const response = await fetch(url);
-        if (response.ok) {
-          const arrayBuffer = await response.arrayBuffer();
-          const uint8 = new Uint8Array(arrayBuffer);
-          if (isPdfByteArray(uint8)) {
-            pdfBytes = uint8;
+      let pdfBytes: Uint8Array | null = null;
+
+      if (url.startsWith('data:')) {
+        try {
+          const parts = url.split(',');
+          const base64Data = (parts[1] || parts[0]).trim().replace(/[\s\r\n]/g, '');
+          const binaryString = atob(base64Data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
           }
+          if (isPdfByteArray(bytes)) {
+            pdfBytes = bytes;
+          }
+        } catch (e) {
+          console.warn('Failed parsing data URL:', e);
         }
-      } catch (fetchErr) {
-        console.warn('[PdfViewer] Direct fetch failed or returned non-PDF:', fetchErr);
       }
-    }
 
-    if (!pdfBytes) {
+      if (!pdfBytes && (url.startsWith('http') || url.startsWith('/') || url.startsWith('blob:'))) {
+        try {
+          const response = await fetch(url);
+          if (response.ok) {
+            const data = await response.arrayBuffer();
+            const uint8 = new Uint8Array(data);
+            if (isPdfByteArray(uint8)) {
+              pdfBytes = uint8;
+            }
+          }
+        } catch (fetchErr) {
+          console.warn('[PdfViewer] Direct fetch note:', fetchErr);
+        }
+      }
+
+      if (isCancelled) return;
+
+      if (!pdfBytes && parsedPdfInfo.isGoogleDrive) {
+        setLoading(false);
+        return;
+      }
+
       try {
-        const generated = await generateClientQuestionPaperPdf({
-          collegeName: 'SEMESTER (PYQs)',
-          paperTitle: title,
-          subjectName: paperDetails?.subjectName || title,
-          courseName: paperDetails?.courseName,
-          courseCode: paperDetails?.courseCode,
-          yearName: paperDetails?.yearName,
-          subjectCode: paperDetails?.subjectCode,
-          examYear: paperDetails?.examYear,
-          examSession: paperDetails?.examSession,
-          paperCode: paperDetails?.paperCode,
-          totalMarks: paperDetails?.totalMarks,
-          duration: paperDetails?.duration,
-          ...paperDetails,
-        });
-        pdfBytes = generated;
+        const cMapUrl = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '6.3.289'}/cmaps/`;
+        const standardFontDataUrl = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '6.3.289'}/standard_fonts/`;
 
-        const blob = new Blob([generated as unknown as BlobPart], { type: 'application/pdf' });
-        const blobUrl = URL.createObjectURL(blob);
-        setGeneratedBlobUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return blobUrl;
-        });
-      } catch (genErr: any) {
-        console.error('[PdfViewer] Failed to synthesize fallback PDF:', genErr);
+        const docInitParams: any = pdfBytes
+          ? { data: pdfBytes, cMapUrl, cMapPacked: true, standardFontDataUrl }
+          : { url, cMapUrl, cMapPacked: true, standardFontDataUrl };
+
+        const loadingTask = pdfjsLib.getDocument(docInitParams);
+        const doc = await loadingTask.promise;
+        if (isCancelled) return;
+
+        setPdfDoc(doc);
+        setTotalPages(doc.numPages);
+        setCurrentPage(1);
+        setJumpPageInput('1');
+
+        const dims: { [key: number]: PageDimension } = {};
+        for (let i = 1; i <= doc.numPages; i++) {
+          const p = await doc.getPage(i);
+          const vp = p.getViewport({ scale: 1.0, rotation: 0 });
+          dims[i] = { width: vp.width, height: vp.height };
+        }
+        setBasePageDimensions(dims);
+
+        const firstDim = dims[1] || { width: 612, height: 792 };
+        const initialScale = calculateFitWidthScale(firstDim.width);
+        setScale(initialScale);
+        setRenderScale(initialScale);
+        scaleRef.current = initialScale;
+        renderScaleRef.current = initialScale;
+        setLoading(false);
+      } catch (err: any) {
+        console.error('[PdfViewer] Error loading PDF:', err);
+        if (!isCancelled) {
+          setError('Unable to load original PDF');
+          setLoading(false);
+        }
       }
-    }
+    };
 
-    if (!pdfBytes) {
-      setError('Unable to load or render the question paper PDF file.');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const loadingTask = pdfjsLib.getDocument({
-        data: pdfBytes,
-        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@legacy/cmaps/',
-        cMapPacked: true,
-        standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@legacy/standard_fonts/',
-      });
-
-      const loadedPdf = await loadingTask.promise;
-      setPdfDoc(loadedPdf);
-      setTotalPages(loadedPdf.numPages);
-      setCurrentPage(1);
-      setJumpPageInput('1');
-
-      const dims: { [key: number]: PageDimension } = {};
-      for (let i = 1; i <= loadedPdf.numPages; i++) {
-        const p = await loadedPdf.getPage(i);
-        const vp = p.getViewport({ scale: 1.0, rotation: 0 });
-        dims[i] = { width: vp.width, height: vp.height };
-      }
-      setBasePageDimensions(dims);
-
-      const firstPageVp = dims[1] || { width: 612, height: 792 };
-      const initialScale = getFitWidthScale(firstPageVp.width);
-      setScale(initialScale);
-      setRenderScale(initialScale);
-      scaleRef.current = initialScale;
-      renderScaleRef.current = initialScale;
-      setLoading(false);
-    } catch (err: any) {
-      console.error('[PdfViewer] PDF.js parsing error:', err);
-      setError(err?.message || 'Unable to render the PDF file.');
-      setLoading(false);
-    }
-  }, [url, title, paperDetails, getFitWidthScale]);
-
-  useEffect(() => {
     loadDocument();
-  }, [loadDocument]);
 
-  // High performance Lazy Intersection Observer
+    return () => {
+      isCancelled = true;
+    };
+  }, [url, calculateFitWidthScale]);
+
+  // Observer for Lazy Rendering
   useEffect(() => {
     if (!pdfDoc || totalPages === 0 || loading) return;
 
@@ -399,6 +437,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
 
     renderedPagesRef.current.clear();
+    renderQueueRef.current = [];
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -408,7 +447,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             if (pageNumStr) {
               const p = parseInt(pageNumStr, 10);
               if (p && pdfDocRef.current) {
-                renderSinglePage(p, pdfDocRef.current, renderScaleRef.current, rotationRef.current);
+                enqueuePageRender(p);
               }
             }
           }
@@ -416,7 +455,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       },
       {
         root: containerRef.current,
-        rootMargin: '250px 0px',
+        rootMargin: '400px 0px',
         threshold: 0.01,
       }
     );
@@ -428,57 +467,80 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       if (el) observer.observe(el);
     }
 
-    renderSinglePage(1, pdfDoc, renderScale, rotation);
-    if (totalPages > 1) {
-      renderSinglePage(2, pdfDoc, renderScale, rotation);
-    }
+    enqueuePageRender(1);
+    if (totalPages > 1) enqueuePageRender(2);
 
     return () => {
       observer.disconnect();
     };
-  }, [pdfDoc, totalPages, renderScale, rotation, loading, renderSinglePage]);
+  }, [pdfDoc, totalPages, renderScale, rotation, loading, enqueuePageRender]);
 
-  const handleScroll = useCallback(() => {
-    const container = containerRef.current;
-    if (!container || totalPages <= 1) return;
-
-    setShowPagePill(true);
-    if (pillTimerRef.current) clearTimeout(pillTimerRef.current);
-    pillTimerRef.current = setTimeout(() => {
-      setShowPagePill(false);
-    }, 2000);
-
-    const containerTop = container.scrollTop;
-    const containerHeight = container.clientHeight;
-    const viewCenter = containerTop + containerHeight * 0.35;
-
-    let bestPage = 1;
-    let minDistance = Infinity;
+  // Page Position calculation
+  const pagePositions = useMemo(() => {
+    const positions: { top: number; bottom: number; height: number }[] = [];
+    const isMobile = typeof window !== 'undefined' ? window.innerWidth < 640 : true;
+    const gap = isMobile ? 8 : 16;
+    const topPadding = isMobile ? 8 : 16;
+    let currentTop = topPadding;
 
     for (let p = 1; p <= totalPages; p++) {
-      const pageEl = pageContainerRefs.current[p];
-      if (pageEl) {
-        const pageTop = pageEl.offsetTop;
-        const pageBottom = pageTop + pageEl.offsetHeight;
+      const baseDim = basePageDimensions[p] || { width: 612, height: 792 };
+      const isRotated = rotation === 90 || rotation === 270;
+      const displayHeight = Math.floor((isRotated ? baseDim.width : baseDim.height) * scale);
+      positions[p] = {
+        top: currentTop,
+        bottom: currentTop + displayHeight,
+        height: displayHeight,
+      };
+      currentTop += displayHeight + gap;
+    }
+    return positions;
+  }, [totalPages, basePageDimensions, scale, rotation]);
 
-        if (viewCenter >= pageTop && viewCenter <= pageBottom) {
-          bestPage = p;
-          break;
-        }
+  // Scroll tracking
+  const handleScroll = useCallback(() => {
+    if (pillTimerRef.current) clearTimeout(pillTimerRef.current);
+    setShowPagePill(true);
+    pillTimerRef.current = setTimeout(() => {
+      setShowPagePill(false);
+    }, 2500);
 
-        const distance = Math.abs(pageTop - viewCenter);
-        if (distance < minDistance) {
-          minDistance = distance;
-          bestPage = p;
+    if (scrollRafRef.current) return;
+
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      const container = containerRef.current;
+      if (!container || totalPages <= 1 || pagePositions.length === 0) return;
+
+      const containerTop = container.scrollTop;
+      const containerHeight = container.clientHeight;
+      const viewCenter = containerTop + containerHeight * 0.4;
+
+      let bestPage = 1;
+      let minDistance = Infinity;
+
+      for (let p = 1; p <= totalPages; p++) {
+        const pos = pagePositions[p];
+        if (pos) {
+          if (viewCenter >= pos.top && viewCenter <= pos.bottom) {
+            bestPage = p;
+            break;
+          }
+          const distance = Math.abs(pos.top - viewCenter);
+          if (distance < minDistance) {
+            minDistance = distance;
+            bestPage = p;
+          }
         }
       }
-    }
 
-    if (bestPage !== currentPage) {
-      setCurrentPage(bestPage);
-      setJumpPageInput(String(bestPage));
-    }
-  }, [totalPages, currentPage]);
+      if (bestPage !== currentPageRef.current) {
+        currentPageRef.current = bestPage;
+        setCurrentPage(bestPage);
+        setJumpPageInput(String(bestPage));
+      }
+    });
+  }, [totalPages, pagePositions]);
 
   const scrollToPage = useCallback((pageNum: number) => {
     const container = containerRef.current;
@@ -489,18 +551,44 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         top: targetTop,
         behavior: 'smooth',
       });
+      currentPageRef.current = pageNum;
       setCurrentPage(pageNum);
       setJumpPageInput(String(pageNum));
     }
   }, []);
 
-  // Multi-Touch Pinch on Mobile ONLY with 2 fingers
+  // Multi-Touch Pinch & Double-Tap
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        const now = Date.now();
+        const timeDiff = now - lastTapRef.current.time;
+        const distDiff = Math.hypot(
+          touch.clientX - lastTapRef.current.x,
+          touch.clientY - lastTapRef.current.y
+        );
+
+        if (timeDiff < 300 && distDiff < 25) {
+          e.preventDefault();
+          lastTapRef.current = { time: 0, x: 0, y: 0 };
+
+          const firstDim = basePageDimensions[1] || { width: 612, height: 792 };
+          const fitScale = calculateFitWidthScale(firstDim.width);
+
+          if (Math.abs(scaleRef.current - fitScale) < 0.1) {
+            setZoomWithAnchor(2.0, { clientX: touch.clientX, clientY: touch.clientY });
+          } else {
+            setZoomWithAnchor(fitScale, undefined, 'width');
+          }
+          return;
+        }
+
+        lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY };
+      } else if (e.touches.length === 2) {
         const t1 = e.touches[0];
         const t2 = e.touches[1];
         const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
@@ -514,10 +602,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           isPinching: true,
           initialDistance: dist,
           initialScale: curScale,
+          currentPinchScale: curScale,
           focalDocX: (container.scrollLeft + midX) / curScale,
           focalDocY: (container.scrollTop + midY) / curScale,
           viewportFocalX: midX,
           viewportFocalY: midY,
+          pinchRafId: null,
         };
       }
     };
@@ -536,18 +626,27 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             Math.max(touchStateRef.current.initialScale * ratio, 0.4),
             4.0
           );
+          touchStateRef.current.currentPinchScale = targetScale;
 
-          const { focalDocX, focalDocY, viewportFocalX, viewportFocalY } = touchStateRef.current;
+          if (!touchStateRef.current.pinchRafId) {
+            touchStateRef.current.pinchRafId = requestAnimationFrame(() => {
+              touchStateRef.current.pinchRafId = null;
+              if (!touchStateRef.current.isPinching) return;
 
-          anchorRef.current = {
-            docX: focalDocX,
-            docY: focalDocY,
-            viewportX: viewportFocalX,
-            viewportY: viewportFocalY,
-          };
+              const { focalDocX, focalDocY, viewportFocalX, viewportFocalY, currentPinchScale } =
+                touchStateRef.current;
 
-          setScale(targetScale);
-          setFitMode('custom');
+              anchorRef.current = {
+                docX: focalDocX,
+                docY: focalDocY,
+                viewportX: viewportFocalX,
+                viewportY: viewportFocalY,
+              };
+
+              setScale(currentPinchScale);
+              setFitMode('custom');
+            });
+          }
         }
       }
     };
@@ -556,6 +655,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       if (touchStateRef.current.isPinching && e.touches.length < 2) {
         touchStateRef.current.isPinching = false;
         touchStateRef.current.initialDistance = 0;
+        if (touchStateRef.current.pinchRafId) {
+          cancelAnimationFrame(touchStateRef.current.pinchRafId);
+          touchStateRef.current.pinchRafId = null;
+        }
         scheduleHighResRender(scaleRef.current);
       }
     };
@@ -569,7 +672,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       }
     };
 
-    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
     container.addEventListener('touchmove', handleTouchMove, { passive: false });
     container.addEventListener('touchend', handleTouchEnd, { passive: true });
     container.addEventListener('touchcancel', handleTouchEnd, { passive: true });
@@ -582,9 +685,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       container.removeEventListener('touchcancel', handleTouchEnd);
       container.removeEventListener('wheel', handleWheel);
     };
-  }, [setZoomWithAnchor, scheduleHighResRender]);
+  }, [setZoomWithAnchor, scheduleHighResRender, calculateFitWidthScale, basePageDimensions]);
 
-  // Window resize handler (screen width change only)
+  // Window resize handler
   useEffect(() => {
     const handleResize = () => {
       const currentWidth = window.innerWidth;
@@ -592,7 +695,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         lastWidthRef.current = currentWidth;
         if (!pdfDoc || fitMode !== 'width') return;
         const firstDim = basePageDimensions[1] || { width: 612, height: 792 };
-        const newScale = getFitWidthScale(firstDim.width);
+        const newScale = calculateFitWidthScale(firstDim.width);
         setScale(newScale);
         setRenderScale(newScale);
         scaleRef.current = newScale;
@@ -601,318 +704,203 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [pdfDoc, fitMode, basePageDimensions, getFitWidthScale]);
+  }, [pdfDoc, fitMode, basePageDimensions, calculateFitWidthScale]);
 
-  const prevPage = () => {
-    if (currentPage > 1) scrollToPage(currentPage - 1);
-  };
-
-  const nextPage = () => {
-    if (currentPage < totalPages) scrollToPage(currentPage + 1);
-  };
-
-  const handlePageJumpSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const target = parseInt(jumpPageInput, 10);
-    if (!isNaN(target) && target >= 1 && target <= totalPages) {
-      scrollToPage(target);
-    } else {
-      setJumpPageInput(String(currentPage));
-    }
-  };
-
-  const zoomIn = () => setZoomWithAnchor(scale + 0.15);
-  const zoomOut = () => setZoomWithAnchor(scale - 0.15);
-
+  // Actions
+  const handleZoomIn = () => setZoomWithAnchor(scale + 0.15);
+  const handleZoomOut = () => setZoomWithAnchor(scale - 0.15);
   const handleFitWidth = () => {
     if (!pdfDoc) return;
     const firstDim = basePageDimensions[1] || { width: 612, height: 792 };
-    const fitScale = getFitWidthScale(firstDim.width);
+    const fitScale = calculateFitWidthScale(firstDim.width);
     setZoomWithAnchor(fitScale, undefined, 'width');
   };
-
   const handleResetZoom100 = () => setZoomWithAnchor(1.0);
-  const rotateClockwise = () => setRotation((r) => (r + 90) % 360);
+  const handleRotate = () => setRotation((r) => (r + 90) % 360);
 
   const toggleFullScreen = () => {
+    if (!wrapperRef.current) return;
     if (!document.fullscreenElement) {
-      if (wrapperRef.current?.requestFullscreen) {
-        wrapperRef.current.requestFullscreen();
-        setIsFullScreen(true);
-      }
+      wrapperRef.current.requestFullscreen?.().catch(() => {});
+      setIsFullScreen(true);
     } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-        setIsFullScreen(false);
-      }
+      document.exitFullscreen?.().catch(() => {});
+      setIsFullScreen(false);
     }
   };
 
-  const handlePrint = () => {
-    if (effectiveDownloadUrl && effectiveDownloadUrl !== '#') {
-      const printWindow = window.open(effectiveDownloadUrl, '_blank');
-      if (printWindow) printWindow.focus();
-    }
+  const handleDownload = () => {
+    const targetUrl = downloadUrl || url;
+    if (!targetUrl) return;
+    const link = document.createElement('a');
+    link.href = targetUrl;
+    link.download = downloadFilename || 'question-paper.pdf';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      if (document.body.contains(link)) document.body.removeChild(link);
+    }, 1000);
   };
 
   return (
     <div
       ref={wrapperRef}
-      className={`flex flex-col bg-[#202124] text-slate-100 overflow-hidden shadow-xl border border-[#3c4043] transition-all select-none ${className} ${
-        isFullScreen ? 'fixed inset-0 z-50 rounded-none w-screen h-screen' : 'w-full rounded-none sm:rounded-lg'
-      }`}
-      style={{ minHeight: isFullScreen ? '100dvh' : minHeight }}
+      className={`relative flex flex-col bg-[#F3F4F6] text-slate-800 rounded-xl overflow-hidden border border-slate-200 shadow-sm ${className}`}
+      style={{ minHeight }}
     >
-      {/* ============================================================
-          GOOGLE DRIVE / CHROME STYLE TOP TOOLBAR
-      ============================================================ */}
-      <header
-        style={{
-          paddingTop: isFullScreen ? 'max(0.5rem, env(safe-area-inset-top, 0px))' : undefined,
-          paddingLeft: isFullScreen ? 'max(0.5rem, env(safe-area-inset-left, 0px))' : undefined,
-          paddingRight: isFullScreen ? 'max(0.5rem, env(safe-area-inset-right, 0px))' : undefined,
-        }}
-        className="w-full flex items-center justify-between px-2 sm:px-4 py-2 bg-[#323639] border-b border-[#444746] text-white z-20 shrink-0 gap-1.5 sm:gap-2 shadow-md"
-      >
-        {/* Left: Document Info */}
-        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1 max-w-[40%] sm:max-w-none">
-          <div className="w-5 h-5 sm:w-7 sm:h-7 rounded-xs bg-[#ea4335] flex items-center justify-center shrink-0 shadow-xs">
-            <span className="text-white font-black text-[8px] sm:text-[10px] tracking-wider">PDF</span>
-          </div>
-          <div className="min-w-0 truncate">
-            <h2 className="text-xs sm:text-sm font-medium truncate text-slate-100 leading-snug">
-              {title}
-            </h2>
-            <div className="hidden xs:flex items-center gap-1 text-[10px] sm:text-xs text-slate-400 truncate">
-              <span className="truncate">
-                {paperDetails?.subjectName || 'Question Paper'}
-              </span>
-            </div>
-          </div>
+      {/* Top Header Bar */}
+      <div className="h-12 bg-white border-b border-slate-200 px-3 flex items-center justify-between z-20 shrink-0 select-none">
+        <div className="min-w-0 pr-2">
+          <h3 className="text-xs sm:text-sm font-bold text-slate-900 truncate font-serif">
+            {title}
+          </h3>
         </div>
 
-        {/* Center: Controls (Pagination, Zoom, Fit) */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* Pagination */}
-          <div className="flex items-center bg-[#282a2d] px-0.5 sm:px-1 py-0.5 rounded-md border border-[#444746]">
+        {/* Center / Right controls */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <div className="hidden sm:flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
             <button
-              onClick={prevPage}
-              disabled={currentPage <= 1 || loading}
-              className="p-0.5 sm:p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
-              title="Previous Page"
+              onClick={handleZoomOut}
+              disabled={scale <= 0.4}
+              className="p-1 rounded hover:bg-white text-slate-700 disabled:opacity-30 cursor-pointer"
+              title="Zoom Out"
             >
-              <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <ZoomOut className="w-3.5 h-3.5" />
             </button>
-
-            <form onSubmit={handlePageJumpSubmit} className="flex items-center px-0.5">
-              <input
-                type="text"
-                value={jumpPageInput}
-                onChange={(e) => setJumpPageInput(e.target.value)}
-                onBlur={handlePageJumpSubmit}
-                disabled={totalPages <= 1 || loading}
-                className="w-4 sm:w-7 py-0 text-center text-[11px] sm:text-xs font-medium bg-transparent text-white border-none focus:ring-1 focus:ring-[#8ab4f8] focus:bg-[#18191a] rounded focus:outline-hidden"
-              />
-              <span className="text-[10px] sm:text-xs text-slate-400 font-normal select-none">
-                /{totalPages || 1}
-              </span>
-            </form>
-
-            <button
-              onClick={nextPage}
-              disabled={currentPage >= totalPages || loading}
-              className="p-0.5 sm:p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
-              title="Next Page"
-            >
-              <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            </button>
-          </div>
-
-          <div className="h-3.5 w-px bg-[#444746] hidden xs:block" />
-
-          {/* Zoom Controls */}
-          <div className="flex items-center bg-[#282a2d] px-0.5 sm:px-1 py-0.5 rounded-md border border-[#444746]">
-            <button
-              onClick={zoomOut}
-              disabled={scale <= 0.4 || loading}
-              className="p-0.5 sm:p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
-              title="Zoom Out (-)"
-            >
-              <ZoomOut className="w-3 h-3 sm:w-4 sm:h-4" />
-            </button>
-
             <button
               onClick={handleResetZoom100}
-              className="px-1 sm:px-1.5 py-0.5 rounded hover:bg-white/10 text-[10px] sm:text-xs font-mono font-medium text-slate-200 hover:text-white transition-colors cursor-pointer"
-              title="Reset to 100%"
+              className="px-1.5 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-white rounded cursor-pointer"
+              title="Reset 100%"
             >
               {Math.round(scale * 100)}%
             </button>
-
             <button
-              onClick={zoomIn}
-              disabled={scale >= 4.0 || loading}
-              className="p-0.5 sm:p-1 rounded hover:bg-white/10 active:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 transition-all cursor-pointer"
-              title="Zoom In (+)"
+              onClick={handleZoomIn}
+              disabled={scale >= 4.0}
+              className="p-1 rounded hover:bg-white text-slate-700 disabled:opacity-30 cursor-pointer"
+              title="Zoom In"
             >
-              <ZoomIn className="w-3 h-3 sm:w-4 sm:h-4" />
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+            <div className="w-[1px] h-3.5 bg-slate-300 mx-0.5" />
+            <button
+              onClick={handleFitWidth}
+              className={`p-1 rounded text-slate-700 cursor-pointer ${
+                fitMode === 'width' ? 'bg-white text-blue-600 shadow-2xs font-semibold' : 'hover:bg-white'
+              }`}
+              title="Fit to Width"
+            >
+              <Maximize className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={handleRotate}
+              className="p-1 rounded hover:bg-white text-slate-700 cursor-pointer"
+              title="Rotate (90°)"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="h-3.5 w-px bg-[#444746] hidden sm:block" />
-
-          {/* Fit Width */}
-          <button
-            onClick={handleFitWidth}
-            className={`hidden sm:flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border transition-all cursor-pointer ${
-              fitMode === 'width'
-                ? 'bg-[#1a73e8] border-[#1a73e8] text-white shadow-xs'
-                : 'bg-[#282a2d] border-[#444746] hover:bg-white/10 text-slate-300 hover:text-white'
-            }`}
-            title="Fit to width"
-          >
-            <Maximize className="w-3.5 h-3.5" />
-            <span>Fit Width</span>
-          </button>
-
-          {/* Rotate */}
-          <button
-            onClick={rotateClockwise}
-            className="p-1 rounded-md bg-[#282a2d] border border-[#444746] hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer hidden md:inline-flex"
-            title="Rotate 90°"
-          >
-            <RotateCw className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* Right: Actions (Fullscreen, Download, Open) */}
-        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-          <button
-            onClick={handlePrint}
-            disabled={loading}
-            className="p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer hidden lg:inline-flex"
-            title="Print"
-          >
-            <Printer className="w-4 h-4" />
-          </button>
-
-          <a
-            href={effectiveDownloadUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden sm:inline-flex p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
-            title="Open original file"
-          >
-            <ExternalLink className="w-4 h-4" />
-          </a>
+          {showDownloadButton && (
+            <button
+              onClick={handleDownload}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium cursor-pointer shadow-xs"
+              title="Download PDF"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Download</span>
+            </button>
+          )}
 
           <button
             onClick={toggleFullScreen}
-            className="p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer hidden sm:inline-flex"
+            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 cursor-pointer"
             title={isFullScreen ? 'Exit Full Screen' : 'Full Screen'}
           >
-            {isFullScreen ? (
-              <Minimize2 className="w-4 h-4" />
-            ) : (
-              <Maximize2 className="w-4 h-4" />
-            )}
+            {isFullScreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
-
-          {showDownloadButton && (
-            <a
-              href={effectiveDownloadUrl}
-              download={effectiveDownloadFilename}
-              className="inline-flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-[#1a73e8] hover:bg-[#1557b0] active:scale-95 text-white text-[11px] sm:text-xs font-medium shadow-sm transition-all cursor-pointer"
-              title="Download PDF"
-            >
-              <Download className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-              <span className="hidden sm:inline">Download</span>
-            </a>
-          )}
         </div>
-      </header>
+      </div>
 
-      {/* ============================================================
-          MAIN VIEWER CANVAS AREA (Lag-free 60fps scrolling & native mobile feel)
-      ============================================================ */}
-      <main
+      {/* Main Canvas Area */}
+      <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="relative flex-1 w-full bg-[#202124] overflow-x-auto overflow-y-auto p-0 m-0 select-none block"
+        className={`relative flex-1 bg-[#F3F4F6] ${
+          fitMode === 'width' || scale <= 1.05 ? 'overflow-x-hidden' : 'overflow-x-auto'
+        } overflow-y-auto p-0 m-0 select-none block`}
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
+          touchAction: fitMode === 'width' || scale <= 1.05 ? 'pan-y pinch-zoom' : 'pan-x pan-y pinch-zoom',
+          transform: 'translateZ(0)',
         }}
       >
-        {/* Floating Mobile Page Pill Indicator */}
-        {!loading && !error && !isGoogleDriveDoc && totalPages > 0 && (
+        {/* Floating Page indicator */}
+        {!loading && !error && totalPages > 0 && (
           <div
-            className={`fixed top-14 right-3 sm:top-16 sm:right-6 z-40 transition-opacity duration-300 pointer-events-none ${
-              showPagePill ? 'opacity-90' : 'opacity-0'
+            className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-40 transition-opacity duration-300 ${
+              showPagePill ? 'opacity-100' : 'opacity-0 pointer-events-none'
             }`}
           >
-            <div className="bg-black/75 backdrop-blur-md text-white text-xs font-semibold px-3 py-1 rounded-full shadow-lg border border-white/10 flex items-center gap-1">
-              <span>{currentPage}</span>
-              <span className="text-slate-400">/</span>
-              <span>{totalPages}</span>
+            <div className="bg-slate-900/85 backdrop-blur-md text-white text-xs font-semibold px-3 py-1 rounded-full shadow-lg border border-white/15 flex items-center gap-1.5">
+              <button
+                onClick={() => scrollToPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage <= 1}
+                className="p-0.5 rounded hover:bg-white/20 disabled:opacity-30 cursor-pointer"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <span>
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => scrollToPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage >= totalPages}
+                className="p-0.5 rounded hover:bg-white/20 disabled:opacity-30 cursor-pointer"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
             </div>
-          </div>
-        )}
-
-        {isGoogleDriveDoc && !loading && (
-          <div className="w-full h-full min-h-[620px] flex flex-col bg-[#202124]">
-            <iframe
-              src={parsedPdfInfo.previewUrl}
-              title={title}
-              className="w-full flex-1 min-h-[620px] border-0 rounded-b-xl"
-              allow="autoplay"
-            />
           </div>
         )}
 
         {loading && (
-          <div className="flex flex-col items-center justify-center min-h-[50vh] text-slate-400 gap-3 py-20">
-            <Loader2 className="w-8 h-8 text-[#8ab4f8] animate-spin" />
-            <p className="text-xs sm:text-sm font-medium text-slate-300 animate-pulse">
-              Loading high-resolution PDF...
-            </p>
+          <div className="flex flex-col items-center justify-center min-h-[300px] text-slate-500 gap-3 py-16">
+            <Loader2 className="w-7 h-7 text-blue-600 animate-spin" />
+            <p className="text-xs font-medium text-slate-600">Loading document...</p>
           </div>
         )}
 
         {error && !loading && (
-          <div className="max-w-md w-full mx-auto my-12 text-center p-6 bg-[#282a2d] border border-[#3c4043] rounded-xl space-y-4 shadow-xl">
-            <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
-              <AlertCircle className="w-6 h-6" />
+          <div className="max-w-md w-full mx-auto my-8 text-center p-6 bg-white border border-slate-200 rounded-xl space-y-3 shadow-sm">
+            <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+              <AlertCircle className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="font-bold text-sm sm:text-base text-white">Document Notice</h4>
-              <p className="text-xs text-slate-400 mt-1">{error}</p>
+              <h4 className="font-bold text-sm text-slate-900 font-serif">Notice</h4>
+              <p className="text-xs text-slate-500 mt-0.5">{error}</p>
             </div>
-            <div className="flex flex-wrap gap-2 justify-center pt-2">
+            {showDownloadButton && (
               <button
-                onClick={loadDocument}
-                className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 bg-[#323639] hover:bg-[#3f4347] text-slate-200 text-xs font-semibold rounded-full transition-colors cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Retry</span>
-              </button>
-              <a
-                href={effectiveDownloadUrl}
-                download={effectiveDownloadFilename}
-                className="inline-flex items-center space-x-1.5 px-4 py-1.5 bg-[#1a73e8] hover:bg-[#1557b0] text-white text-xs font-bold rounded-full transition-colors cursor-pointer shadow-xs"
+                onClick={handleDownload}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium cursor-pointer shadow-xs"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Download</span>
-              </a>
-            </div>
+                <span>Download Document</span>
+              </button>
+            )}
           </div>
         )}
 
-        {/* Continuous Centered & Side-Pannable Pages Stack */}
+        {/* Continuous Page Stack */}
         {!loading && !error && pdfDoc && (
           <div
             ref={contentWrapperRef}
-            className="min-w-full inline-flex flex-col items-center gap-2 sm:gap-4 py-2 sm:py-4 px-1 sm:px-2"
+            className="min-w-full inline-flex flex-col items-center gap-2 sm:gap-4 py-2 sm:py-4 px-0 sm:px-2"
           >
             {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNum) => {
               const baseDim = basePageDimensions[pageNum] || { width: 612, height: 792 };
@@ -932,10 +920,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
                     width: `${Math.floor(displayWidth)}px`,
                     minHeight: `${Math.floor(displayHeight)}px`,
                     contain: 'layout style paint',
+                    transform: 'translateZ(0)',
                   }}
                 >
                   <div
-                    className="bg-white shadow-[0_2px_12px_rgba(0,0,0,0.5)] overflow-hidden"
+                    className="relative bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)] sm:shadow-[0_4px_14px_rgba(0,0,0,0.09)] overflow-hidden"
                     style={{
                       width: `${Math.floor(displayWidth)}px`,
                       height: `${Math.floor(displayHeight)}px`,
@@ -945,9 +934,19 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
                       ref={(el) => {
                         canvasRefs.current[pageNum] = el;
                       }}
-                      className="block w-full h-full bg-white object-contain"
+                      className="block w-full h-full bg-white object-contain pointer-events-none"
                       style={{
                         imageRendering: '-webkit-optimize-contrast',
+                      }}
+                    />
+                    <div
+                      ref={(el) => {
+                        textLayerRefs.current[pageNum] = el;
+                      }}
+                      className="textLayer"
+                      style={{
+                        width: `${Math.floor(displayWidth)}px`,
+                        height: `${Math.floor(displayHeight)}px`,
                       }}
                     />
                   </div>
@@ -956,7 +955,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             })}
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 };

@@ -1,8 +1,13 @@
 import * as pdfjsLib from 'pdfjs-dist';
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
-import { generateClientQuestionPaperPdf } from './clientPdfGenerator';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+if (typeof window !== 'undefined') {
+  try {
+    // Statically served worker from public folder for maximum speed & offline reliability
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+  } catch {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '6.3.289'}/build/pdf.worker.min.mjs`;
+  }
+}
 
 export { pdfjsLib };
 
@@ -23,6 +28,7 @@ export interface DownloadablePaper {
 }
 
 import { parsePdfUrl } from './pdfUrlHelper';
+import { isPdfByteArray, generateClientQuestionPaperPdf } from './clientPdfGenerator';
 
 export const downloadPaperPdf = async (paper: DownloadablePaper): Promise<boolean> => {
   const safeName = (
@@ -55,16 +61,28 @@ export const downloadPaperPdf = async (paper: DownloadablePaper): Promise<boolea
   // If paper has base64 data URL
   if (paper.file_url && paper.file_url.startsWith('data:')) {
     try {
-      const link = document.createElement('a');
-      link.href = paper.file_url;
-      link.download = safeName;
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => {
-        if (document.body.contains(link)) document.body.removeChild(link);
-      }, 1000);
-      return true;
+      const parts = paper.file_url.split(',');
+      const base64Data = (parts[1] || parts[0]).trim().replace(/[\s\r\n]/g, '');
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      if (isPdfByteArray(bytes)) {
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const blobUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = safeName;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          if (document.body.contains(link)) document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+        }, 2000);
+        return true;
+      }
     } catch (e) {
       console.warn('Direct data URL download failed, continuing fallback:', e);
     }
@@ -72,10 +90,50 @@ export const downloadPaperPdf = async (paper: DownloadablePaper): Promise<boolea
 
   const downloadUrl = paper.file_url || `/api/papers/${paper.id}/download`;
 
+  if (downloadUrl && !downloadUrl.startsWith('data:')) {
+    try {
+      const res = await fetch(downloadUrl);
+      if (res.ok) {
+        const arrayBuf = await res.arrayBuffer();
+        if (isPdfByteArray(arrayBuf)) {
+          const blob = new Blob([arrayBuf], { type: 'application/pdf' });
+          const blobUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = safeName;
+          link.style.display = 'none';
+          document.body.appendChild(link);
+          link.click();
+          setTimeout(() => {
+            if (document.body.contains(link)) {
+              document.body.removeChild(link);
+            }
+            window.URL.revokeObjectURL(blobUrl);
+          }, 2000);
+          return true;
+        }
+      }
+    } catch (err) {
+      console.warn('Network download failed, using client fallback:', err);
+    }
+  }
+
+  // Client-side fallback PDF generator
   try {
-    const res = await fetch(downloadUrl);
-    if (!res.ok) throw new Error(`Download response status ${res.status}`);
-    const blob = await res.blob();
+    const pdfBytes = await generateClientQuestionPaperPdf({
+      collegeName: paper.course_name || 'Semester (PYQs) Examination Portal',
+      courseName: paper.course_name,
+      courseCode: paper.course_code,
+      subjectName: paper.subject_name || paper.title,
+      subjectCode: paper.subject_code || paper.paper_code,
+      paperTitle: paper.title,
+      examYear: paper.paper_year || paper.exam_year || 2024,
+      paperCode: paper.paper_code || 'QP',
+      totalMarks: paper.total_marks || 75,
+      duration: paper.duration || '3 Hours',
+    });
+
+    const blob = new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' });
     const blobUrl = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = blobUrl;
@@ -84,45 +142,12 @@ export const downloadPaperPdf = async (paper: DownloadablePaper): Promise<boolea
     document.body.appendChild(link);
     link.click();
     setTimeout(() => {
-      if (document.body.contains(link)) {
-        document.body.removeChild(link);
-      }
+      if (document.body.contains(link)) document.body.removeChild(link);
       window.URL.revokeObjectURL(blobUrl);
     }, 2000);
     return true;
-  } catch (err) {
-    console.warn('Network download failed, synthesizing client PDF for download:', err);
-    try {
-      const pdfBytes = await generateClientQuestionPaperPdf({
-        collegeName: 'SEMESTER (PYQs)',
-        courseName: paper.course_name || paper.course_code || 'Degree Course',
-        courseCode: paper.course_code || 'DEG',
-        subjectName: paper.subject_name || paper.title,
-        subjectCode: paper.subject_code || paper.paper_code,
-        paperTitle: paper.title,
-        examYear: paper.paper_year || paper.exam_year || 2024,
-        paperCode: paper.paper_code,
-        totalMarks: paper.total_marks || 75,
-        duration: paper.duration || '3 Hours',
-      });
-      const blob = new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' });
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = safeName;
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => {
-        if (document.body.contains(link)) {
-          document.body.removeChild(link);
-        }
-        window.URL.revokeObjectURL(blobUrl);
-      }, 2000);
-      return true;
-    } catch (synthErr) {
-      console.error('Failed synthesizing fallback PDF:', synthErr);
-      return false;
-    }
+  } catch (genErr) {
+    console.error('Download PDF synthesis failed:', genErr);
+    return false;
   }
 };

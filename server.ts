@@ -6,7 +6,6 @@ import fs from 'fs';
 import multer from 'multer';
 import { createServer as createViteServer } from 'vite';
 import { db, PAPERS_UPLOAD_DIR, LOGOS_UPLOAD_DIR } from './server/db';
-import { generateQuestionPaperPdf } from './server/pdf-generator';
 import {
   handleAdminLoginStep1,
   handleAdminVerifyOtp,
@@ -236,6 +235,21 @@ app.get('/api/papers/:id/file', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Accept-Ranges', 'bytes');
 
+  if (paper.file_url && paper.file_url.startsWith('data:')) {
+    try {
+      const base64Data = paper.file_url.split(',')[1] || paper.file_url;
+      const pdfBuf = Buffer.from(base64Data, 'base64');
+      if (pdfBuf.length >= 4 && pdfBuf.slice(0, 4).toString() === '%PDF') {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${paper.file_name || 'paper.pdf'}"`);
+        res.setHeader('Content-Length', pdfBuf.length);
+        return res.send(pdfBuf);
+      }
+    } catch (e) {
+      console.error('Error decoding base64 PDF:', e);
+    }
+  }
+
   if (paper.file_url && paper.file_url.startsWith('/uploads/')) {
     const filePath = path.join(process.cwd(), paper.file_url);
     if (fs.existsSync(filePath)) {
@@ -245,28 +259,7 @@ app.get('/api/papers/:id/file', (req, res) => {
     }
   }
 
-  // Fallback: Generate sample PDF if not uploaded physically
-  generateQuestionPaperPdf({
-    title: paper.title,
-    courseName: paper.course_name || 'Degree Course',
-    courseCode: paper.course_code || 'ACAD',
-    subjectName: paper.subject_name || 'Subject',
-    paperCode: paper.paper_code || 'EXAM-CODE',
-    examYear: paper.paper_year || paper.exam_year || 2024,
-    examSession: paper.exam_session || 'Semester Exam',
-    totalMarks: paper.total_marks || 75,
-    duration: paper.duration || '3 Hours',
-  })
-    .then((pdfBytes) => {
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="${paper.paper_code || 'paper'}.pdf"`);
-      res.setHeader('Content-Length', pdfBytes.length);
-      res.send(pdfBytes);
-    })
-    .catch((err) => {
-      console.error('PDF generation error:', err);
-      res.status(500).send('Error serving question paper PDF file');
-    });
+  return res.status(404).json({ error: 'PDF document not found' });
 });
 
 // Download PDF
@@ -296,6 +289,21 @@ app.get('/api/papers/:id/download', async (req, res) => {
 
   res.setHeader('Access-Control-Allow-Origin', '*');
 
+  if (paper.file_url && paper.file_url.startsWith('data:')) {
+    try {
+      const base64Data = paper.file_url.split(',')[1] || paper.file_url;
+      const pdfBuf = Buffer.from(base64Data, 'base64');
+      if (pdfBuf.length >= 4 && pdfBuf.slice(0, 4).toString() === '%PDF') {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+        res.setHeader('Content-Length', pdfBuf.length);
+        return res.send(pdfBuf);
+      }
+    } catch (e) {
+      console.error('Error decoding base64 PDF for download:', e);
+    }
+  }
+
   if (paper.file_url && paper.file_url.startsWith('/uploads/')) {
     const filePath = path.join(process.cwd(), paper.file_url);
     if (fs.existsSync(filePath)) {
@@ -305,27 +313,7 @@ app.get('/api/papers/:id/download', async (req, res) => {
     }
   }
 
-  try {
-    const pdfBytes = await generateQuestionPaperPdf({
-      title: paper.title,
-      courseName: paper.course_name || 'Degree Course',
-      courseCode: paper.course_code || 'ACAD',
-      subjectName: paper.subject_name || 'Subject',
-      paperCode: paper.paper_code || 'EXAM-CODE',
-      examYear: paper.paper_year || paper.exam_year || 2024,
-      examSession: paper.exam_session || 'Semester Exam',
-      totalMarks: paper.total_marks || 75,
-      duration: paper.duration || '3 Hours',
-    });
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
-    res.setHeader('Content-Length', pdfBytes.length);
-    res.send(pdfBytes);
-  } catch (err) {
-    console.error('Download PDF error:', err);
-    res.status(500).json({ error: 'Failed to generate PDF download' });
-  }
+  return res.status(404).json({ error: 'PDF document not found' });
 });
 
 // 8. SEARCH

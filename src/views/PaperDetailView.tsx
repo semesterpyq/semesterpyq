@@ -100,20 +100,6 @@ export const PaperDetailView: React.FC<PaperDetailViewProps> = ({
         <PdfViewer
           url={fileUrl}
           title={`${shortCourseName} ${shortSubjectName} (${paper.exam_year})`}
-          paperDetails={{
-            collegeName: settings?.site_name || 'SEMESTER (PYQs)',
-            courseName: paper.course_name || shortCourseName,
-            courseCode: paper.course_code || shortCourseName,
-            yearName: paper.year_name || 'Academic Year',
-            subjectName: paper.subject_name || shortSubjectName,
-            subjectCode: paper.subject_code || paper.paper_code,
-            paperTitle: paper.title,
-            examYear: paper.exam_year,
-            examSession: paper.exam_session,
-            paperCode: paper.paper_code,
-            totalMarks: paper.total_marks,
-            duration: paper.duration,
-          }}
           downloadUrl={downloadUrl}
           downloadFilename={downloadFilename}
           minHeight="580px"

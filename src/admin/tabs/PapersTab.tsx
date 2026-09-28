@@ -617,19 +617,6 @@ export const PapersTab: React.FC<PapersTabProps> = ({
               <PdfViewer
                 url={previewPaper.file_url || `/api/papers/${previewPaper.id}/file`}
                 title={previewPaper.title}
-                paperDetails={{
-                  courseName: previewPaper.course_name,
-                  courseCode: previewPaper.course_code,
-                  yearName: previewPaper.year_name,
-                  subjectName: previewPaper.subject_name || previewPaper.title,
-                  subjectCode: previewPaper.subject_code || previewPaper.paper_code,
-                  paperTitle: previewPaper.title,
-                  examYear: previewPaper.exam_year,
-                  examSession: previewPaper.exam_session,
-                  paperCode: previewPaper.paper_code,
-                  totalMarks: previewPaper.total_marks,
-                  duration: previewPaper.duration,
-                }}
                 downloadUrl={`/api/papers/${previewPaper.id}/download`}
                 downloadFilename={previewPaper.file_name}
                 minHeight="100%"

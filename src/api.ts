@@ -1119,16 +1119,10 @@ export const api = {
     // 2. Save to dev server if available
     try {
       formData.append('id', newPaperId);
-      const serverRes = await request<QuestionPaper>('/api/admin/papers', {
+      await request<QuestionPaper>('/api/admin/papers', {
         method: 'POST',
         body: formData,
       });
-      if (serverRes && serverRes.id) {
-        if (serverRes.file_url && !serverRes.file_url.startsWith('data:')) {
-          newPaper.file_url = serverRes.file_url;
-          await firestoreApi.updatePaper(newPaper.id, { file_url: serverRes.file_url }).catch(() => null);
-        }
-      }
     } catch {
       // server optional
     }
