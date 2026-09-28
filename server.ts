@@ -211,37 +211,56 @@ app.get('/api/papers/:id', (req, res) => {
 });
 
 // View / Stream PDF
-app.get('/api/papers/:id/file', (req, res) => {
-  const paper = db.getPaperById(req.params.id) || {
-    id: req.params.id,
+const servePdfInline = async (req: express.Request, res: express.Response) => {
+  const paperId = req.params.id || (req.query.id as string);
+  const paper = (paperId ? db.getPaperById(paperId) : null) || {
+    id: paperId || 'qp-default',
     title: (req.query.title as string) || 'Examination Question Paper',
     course_name: (req.query.courseName as string) || 'Undergraduate Course',
     course_code: (req.query.courseCode as string) || 'ACAD',
     subject_name: (req.query.subjectName as string) || 'Subject Paper',
-    paper_code: (req.query.paperCode as string) || req.params.id,
+    paper_code: (req.query.paperCode as string) || paperId || 'QP',
     paper_year: Number(req.query.examYear || req.query.paperYear || 2024),
     exam_year: Number(req.query.examYear || req.query.paperYear || 2024),
     exam_session: 'Main Examination',
     total_marks: 75,
     duration: '3 Hours',
+    file_name: req.params.filename || (req.query.fileName as string),
+    file_url: (req.query.fileUrl as string),
   };
 
   try {
-    db.incrementPaperView(paper.id);
+    if (paper.id) db.incrementPaperView(paper.id);
   } catch {
     // ignore
   }
 
+  // Derive real filename stored in database or fallback
+  let rawFilename = req.params.filename || paper.file_name;
+  if (!rawFilename || rawFilename === 'paper.pdf') {
+    const rawCourseOrSub = (paper.course_name || paper.subject_name || paper.paper_code || 'paper')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-');
+    const yr = paper.paper_year || paper.exam_year || 2024;
+    rawFilename = `${rawCourseOrSub}-${yr}.pdf`;
+  }
+  if (!rawFilename.toLowerCase().endsWith('.pdf')) {
+    rawFilename = `${rawFilename}.pdf`;
+  }
+  const safeFilename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_');
+
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
 
+  // 1. Data URI
   if (paper.file_url && paper.file_url.startsWith('data:')) {
     try {
       const base64Data = paper.file_url.split(',')[1] || paper.file_url;
       const pdfBuf = Buffer.from(base64Data, 'base64');
       if (pdfBuf.length >= 4 && pdfBuf.slice(0, 4).toString() === '%PDF') {
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="${paper.file_name || 'paper.pdf'}"`);
         res.setHeader('Content-Length', pdfBuf.length);
         return res.send(pdfBuf);
       }
@@ -250,17 +269,35 @@ app.get('/api/papers/:id/file', (req, res) => {
     }
   }
 
+  // 2. Uploaded file on disk
   if (paper.file_url && paper.file_url.startsWith('/uploads/')) {
     const filePath = path.join(process.cwd(), paper.file_url);
     if (fs.existsSync(filePath)) {
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="${paper.file_name || 'paper.pdf'}"`);
+      const stats = fs.statSync(filePath);
+      res.setHeader('Content-Length', stats.size);
       return fs.createReadStream(filePath).pipe(res);
     }
   }
 
+  // 3. Fallback: check papers upload directory for matched paper id
+  if (paper.id) {
+    const possibleFiles = fs.existsSync(PAPERS_UPLOAD_DIR) ? fs.readdirSync(PAPERS_UPLOAD_DIR) : [];
+    const matched = possibleFiles.find((f: string) => f.includes(paper.id));
+    if (matched) {
+      const p = path.join(PAPERS_UPLOAD_DIR, matched);
+      const stats = fs.statSync(p);
+      res.setHeader('Content-Length', stats.size);
+      return fs.createReadStream(p).pipe(res);
+    }
+  }
+
   return res.status(404).json({ error: 'PDF document not found' });
-});
+};
+
+app.get('/api/papers/:id/file', servePdfInline);
+app.get('/api/papers/:id/file/:filename', servePdfInline);
+app.get('/api/papers/:id/view', servePdfInline);
+app.get('/api/papers/:id/view/:filename', servePdfInline);
 
 // Download PDF
 app.get('/api/papers/:id/download', async (req, res) => {

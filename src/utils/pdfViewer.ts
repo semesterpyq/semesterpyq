@@ -152,7 +152,24 @@ export const downloadPaperPdf = async (paper: DownloadablePaper): Promise<boolea
   }
 };
 
+export const getPaperFileName = (paper: DownloadablePaper): string => {
+  let rawName = paper.file_name;
+  if (!rawName || rawName === 'paper.pdf') {
+    const rawCourseOrSub = (paper.course_name || paper.subject_name || paper.paper_code || 'paper')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-');
+    const yr = paper.paper_year || paper.exam_year || 2024;
+    rawName = `${rawCourseOrSub}-${yr}.pdf`;
+  }
+  if (!rawName.toLowerCase().endsWith('.pdf')) {
+    rawName = `${rawName}.pdf`;
+  }
+  return rawName.replace(/[^a-zA-Z0-9._-]/g, '_');
+};
+
 export const openPaperPdfInBrowser = async (paper: DownloadablePaper): Promise<void> => {
+  const fileName = getPaperFileName(paper);
   const parsed = parsePdfUrl(paper.file_url);
 
   // If paper is Google Drive
@@ -161,68 +178,8 @@ export const openPaperPdfInBrowser = async (paper: DownloadablePaper): Promise<v
     return;
   }
 
-  // If paper has base64 data URL
-  if (paper.file_url && paper.file_url.startsWith('data:')) {
-    try {
-      const parts = paper.file_url.split(',');
-      const base64Data = (parts[1] || parts[0]).trim().replace(/[\s\r\n]/g, '');
-      const binaryString = atob(base64Data);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      if (isPdfByteArray(bytes)) {
-        const blob = new Blob([bytes], { type: 'application/pdf' });
-        const blobUrl = window.URL.createObjectURL(blob);
-        window.open(blobUrl, '_blank');
-        return;
-      }
-    } catch (e) {
-      console.warn('Base64 parse error in openPaperPdfInBrowser:', e);
-    }
-  }
-
-  // If paper has direct file URL
-  const candidateUrl = paper.file_url || `/api/papers/${paper.id}/file`;
-  if (candidateUrl && !candidateUrl.startsWith('data:')) {
-    try {
-      const res = await fetch(candidateUrl);
-      if (res.ok) {
-        const arrayBuf = await res.arrayBuffer();
-        const uint8 = new Uint8Array(arrayBuf);
-        if (isPdfByteArray(uint8)) {
-          const blob = new Blob([arrayBuf], { type: 'application/pdf' });
-          const blobUrl = window.URL.createObjectURL(blob);
-          window.open(blobUrl, '_blank');
-          return;
-        }
-      }
-    } catch {
-      window.open(candidateUrl, '_blank');
-      return;
-    }
-  }
-
-  // Client-side generated PDF fallback
-  try {
-    const pdfBytes = await generateClientQuestionPaperPdf({
-      collegeName: paper.course_name || 'Semester (PYQs) Examination Portal',
-      courseName: paper.course_name,
-      courseCode: paper.course_code,
-      subjectName: paper.subject_name || paper.title,
-      subjectCode: paper.subject_code || paper.paper_code,
-      paperTitle: paper.title,
-      examYear: paper.paper_year || paper.exam_year || 2024,
-      paperCode: paper.paper_code || 'QP',
-      totalMarks: paper.total_marks || 75,
-      duration: paper.duration || '3 Hours',
-    });
-
-    const blob = new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' });
-    const blobUrl = window.URL.createObjectURL(blob);
-    window.open(blobUrl, '_blank');
-  } catch (err) {
-    console.error('Failed to open PDF in browser:', err);
-  }
+  // Real database filename endpoint that opens directly in default browser PDF viewer
+  const viewerUrl = `/api/papers/${paper.id}/view/${encodeURIComponent(fileName)}`;
+  window.open(viewerUrl, '_blank');
 };
 
