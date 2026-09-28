@@ -21,6 +21,7 @@ import {
   generateClientQuestionPaperPdf,
   QuestionPaperPdfOptions,
 } from '../utils/clientPdfGenerator';
+import { parsePdfUrl } from '../utils/pdfUrlHelper';
 
 try {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '4.10.38'}/legacy/build/pdf.worker.min.mjs`;
@@ -80,6 +81,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const [jumpPageInput, setJumpPageInput] = useState('1');
   const [basePageDimensions, setBasePageDimensions] = useState<{ [key: number]: PageDimension }>({});
   const [showPagePill, setShowPagePill] = useState<boolean>(true);
+  const [isGoogleDriveDoc, setIsGoogleDriveDoc] = useState<boolean>(false);
+
+  const parsedPdfInfo = parsePdfUrl(url);
 
   const scaleRef = useRef<number>(1.0);
   scaleRef.current = scale;
@@ -270,6 +274,13 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     setError(null);
     renderedPagesRef.current.clear();
 
+    if (parsedPdfInfo.isGoogleDrive && parsedPdfInfo.previewUrl) {
+      setIsGoogleDriveDoc(true);
+      setLoading(false);
+      return;
+    }
+
+    setIsGoogleDriveDoc(false);
     let pdfBytes: Uint8Array | null = null;
 
     if (url && url.startsWith('data:')) {
@@ -834,7 +845,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         }}
       >
         {/* Floating Mobile Page Pill Indicator */}
-        {!loading && !error && totalPages > 0 && (
+        {!loading && !error && !isGoogleDriveDoc && totalPages > 0 && (
           <div
             className={`fixed top-14 right-3 sm:top-16 sm:right-6 z-40 transition-opacity duration-300 pointer-events-none ${
               showPagePill ? 'opacity-90' : 'opacity-0'
@@ -845,6 +856,17 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               <span className="text-slate-400">/</span>
               <span>{totalPages}</span>
             </div>
+          </div>
+        )}
+
+        {isGoogleDriveDoc && !loading && (
+          <div className="w-full h-full min-h-[620px] flex flex-col bg-[#202124]">
+            <iframe
+              src={parsedPdfInfo.previewUrl}
+              title={title}
+              className="w-full flex-1 min-h-[620px] border-0 rounded-b-xl"
+              allow="autoplay"
+            />
           </div>
         )}
 

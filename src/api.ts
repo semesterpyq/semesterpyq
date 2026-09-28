@@ -108,7 +108,12 @@ export function compressImageToDataUrl(file: File, maxDimension = 400, quality =
   });
 }
 
+import { readPdfFileAsDataUrl, parsePdfUrl } from './utils/pdfUrlHelper';
+
 function fileToDataUrl(file: File): Promise<string> {
+  if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+    return readPdfFileAsDataUrl(file);
+  }
   return compressImageToDataUrl(file);
 }
 
@@ -1055,17 +1060,23 @@ export const api = {
   adminCreatePaperWithFile: async (formData: FormData): Promise<QuestionPaper> => {
     const title = (formData.get('title') as string) || 'New Question Paper';
     const file = formData.get('pdf') as File;
-    let file_url = '/assets/sample-paper.pdf';
-    let file_name = 'paper.pdf';
+    const directFileUrl = (formData.get('file_url') as string) || '';
+    let file_url = directFileUrl || '/assets/sample-paper.pdf';
+    let file_name = (formData.get('file_name') as string) || 'paper.pdf';
     let file_size = '500 KB';
-    if (file && file.name) {
-      try {
-        file_url = await fileToDataUrl(file);
-      } catch {
-        file_url = '/assets/sample-paper.pdf';
-      }
+
+    if (file && file.name && file.size > 0) {
       file_name = file.name;
       file_size = formatBytes(file.size);
+      try {
+        file_url = await fileToDataUrl(file);
+      } catch (err: any) {
+        console.warn('PDF file read warning:', err);
+      }
+    } else if (directFileUrl) {
+      file_url = directFileUrl;
+      file_name = file_name || 'Question_Paper.pdf';
+      file_size = 'Cloud PDF';
     }
 
     const rawYear = parseInt((formData.get('paper_year') || formData.get('exam_year') || String(new Date().getFullYear())) as string, 10);
@@ -1097,8 +1108,12 @@ export const api = {
     // 1. Save to Firestore ALWAYS
     try {
       await firestoreApi.createPaper(newPaper);
-    } catch (e) {
-      console.warn('Firestore paper write warning:', e);
+    } catch (e: any) {
+      console.error('Firestore paper write error:', e);
+      // If Firestore failed because of size limit, throw friendly error
+      if (e?.message && e.message.includes('exceeds the maximum')) {
+        throw new Error('The PDF file is larger than 1MB for direct database storage. Please use a Google Drive or Cloud link, or compress the PDF to under 800KB.');
+      }
     }
 
     // 2. Save to dev server if available
@@ -1109,7 +1124,6 @@ export const api = {
         body: formData,
       });
       if (serverRes && serverRes.id) {
-        // If server returned a dedicated file_url, keep it merged
         if (serverRes.file_url && !serverRes.file_url.startsWith('data:')) {
           newPaper.file_url = serverRes.file_url;
           await firestoreApi.updatePaper(newPaper.id, { file_url: serverRes.file_url }).catch(() => null);

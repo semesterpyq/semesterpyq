@@ -22,11 +22,35 @@ export interface DownloadablePaper {
   duration?: string;
 }
 
+import { parsePdfUrl } from './pdfUrlHelper';
+
 export const downloadPaperPdf = async (paper: DownloadablePaper): Promise<boolean> => {
   const safeName = (
     paper.file_name ||
     `${paper.paper_code || 'paper'}-${paper.paper_year || paper.exam_year || 2024}.pdf`
   ).replace(/[^a-zA-Z0-9._-]/g, '_');
+
+  const parsed = parsePdfUrl(paper.file_url);
+
+  // If paper is Google Drive
+  if (parsed.isGoogleDrive && parsed.downloadUrl) {
+    try {
+      const link = document.createElement('a');
+      link.href = parsed.downloadUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.download = safeName;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (document.body.contains(link)) document.body.removeChild(link);
+      }, 1000);
+      return true;
+    } catch (e) {
+      console.warn('Google Drive direct download dispatch:', e);
+    }
+  }
 
   // If paper has base64 data URL
   if (paper.file_url && paper.file_url.startsWith('data:')) {

@@ -20,6 +20,7 @@ import {
   isPdfByteArray,
   generateClientQuestionPaperPdf,
 } from '../utils/clientPdfGenerator';
+import { parsePdfUrl } from '../utils/pdfUrlHelper';
 
 interface PdfViewerModalProps {
   paper: QuestionPaper;
@@ -57,6 +58,9 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
   const [jumpPageInput, setJumpPageInput] = useState<string>('1');
   const [basePageDimensions, setBasePageDimensions] = useState<{ [key: number]: PageDimension }>({});
   const [showPagePill, setShowPagePill] = useState<boolean>(true);
+  const [isGoogleDriveDoc, setIsGoogleDriveDoc] = useState<boolean>(false);
+
+  const parsedPdfInfo = parsePdfUrl(paper.file_url);
 
   const scaleRef = useRef<number>(1.0);
   scaleRef.current = scale;
@@ -254,6 +258,13 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
     renderedPagesRef.current.clear();
 
     const loadPdf = async () => {
+      if (parsedPdfInfo.isGoogleDrive && parsedPdfInfo.previewUrl) {
+        setIsGoogleDriveDoc(true);
+        setLoading(false);
+        return;
+      }
+
+      setIsGoogleDriveDoc(false);
       let pdfBytes: Uint8Array | null = null;
 
       if (paper.file_url && paper.file_url.startsWith('data:')) {
@@ -864,7 +875,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
         }}
       >
         {/* Floating Mobile Page Pill Indicator */}
-        {!loading && !error && numPages > 0 && (
+        {!loading && !error && !isGoogleDriveDoc && numPages > 0 && (
           <div
             className={`fixed top-14 right-3 sm:top-16 sm:right-6 z-40 transition-opacity duration-300 pointer-events-none ${
               showPagePill ? 'opacity-90' : 'opacity-0'
@@ -875,6 +886,17 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
               <span className="text-slate-400">/</span>
               <span>{numPages}</span>
             </div>
+          </div>
+        )}
+
+        {isGoogleDriveDoc && !loading && (
+          <div className="w-full h-full min-h-[600px] flex flex-col bg-[#202124]">
+            <iframe
+              src={parsedPdfInfo.previewUrl}
+              title={paper.title}
+              className="w-full flex-1 min-h-[600px] border-0"
+              allow="autoplay"
+            />
           </div>
         )}
 

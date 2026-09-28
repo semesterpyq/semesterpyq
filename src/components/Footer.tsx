@@ -48,9 +48,8 @@ export const Footer: React.FC<FooterProps> = ({
           </button>
         </div>
 
-        <div className="pt-2 text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
-          <span>© {new Date().getFullYear()} {settings.site_name || 'Semester (PYQs)'}. All rights reserved.</span>
-          {onOpenAdmin && (
+        {onOpenAdmin && (
+          <div className="pt-1 flex items-center justify-center">
             <button
               onClick={onOpenAdmin}
               className="text-slate-300 hover:text-slate-500 transition-colors p-0.5 rounded cursor-pointer opacity-30 hover:opacity-100"
@@ -59,8 +58,8 @@ export const Footer: React.FC<FooterProps> = ({
             >
               <Lock className="w-2.5 h-2.5" />
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </footer>
   );

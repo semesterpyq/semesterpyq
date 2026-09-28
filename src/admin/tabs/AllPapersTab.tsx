@@ -1336,8 +1336,8 @@ export const AllPapersTab: React.FC<AllPapersTabProps> = ({
                 </button>
               </div>
 
-              {/* PDF Replacement section */}
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+              {/* PDF Document section */}
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="font-semibold text-slate-800">Attached PDF Document</div>
@@ -1357,9 +1357,29 @@ export const AllPapersTab: React.FC<AllPapersTabProps> = ({
                   )}
                 </div>
 
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Google Drive Link or Direct PDF URL:
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://drive.google.com/file/d/.../view?usp=sharing"
+                    value={editingPaper.file_url?.startsWith('data:') ? '' : (editingPaper.file_url || '')}
+                    onChange={(e) =>
+                      setEditingPaper({
+                        ...editingPaper,
+                        file_url: e.target.value,
+                        file_name: e.target.value.includes('drive.google.com') ? 'Google_Drive_Paper.pdf' : editingPaper.file_name,
+                        file_size: e.target.value ? 'Cloud PDF' : editingPaper.file_size,
+                      })
+                    }
+                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono"
+                  />
+                </div>
+
                 <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
                   <span className="text-[11px] text-slate-600">
-                    Replace this file with a new PDF:
+                    Or replace with local PDF file:
                   </span>
                   <div>
                     <input
