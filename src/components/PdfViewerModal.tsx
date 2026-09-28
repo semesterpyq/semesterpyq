@@ -15,7 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { QuestionPaper } from '../types';
-import { pdfjsLib, downloadPaperPdf } from '../utils/pdfViewer';
+import { pdfjsLib, downloadPaperPdf, getPaperFileName } from '../utils/pdfViewer';
 import { isPdfByteArray, generateClientQuestionPaperPdf } from '../utils/clientPdfGenerator';
 import { parsePdfUrl } from '../utils/pdfUrlHelper';
 
@@ -105,7 +105,8 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
     pinchRafId: null,
   });
 
-  const pdfFileUrl = paper.file_url || `/api/papers/${paper.id}/file`;
+  const realFileName = getPaperFileName(paper);
+  const pdfFileUrl = `/api/papers/${encodeURIComponent(paper.id)}/view/${encodeURIComponent(realFileName)}`;
 
   // Cleanup on unmount
   useEffect(() => {
@@ -784,11 +785,8 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
   };
 
   const handlePrint = () => {
-    if (blobPdfUrl || paper.file_url) {
-      const targetUrl = blobPdfUrl || paper.file_url;
-      const printWindow = window.open(targetUrl, '_blank');
-      printWindow?.focus();
-    }
+    const printWindow = window.open(pdfFileUrl, '_blank');
+    printWindow?.focus();
   };
 
   const handleDownloadClick = async () => {
@@ -893,7 +891,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({ paper, onClose }
           </button>
 
           <a
-            href={blobPdfUrl || pdfFileUrl}
+            href={pdfFileUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="hidden sm:inline-flex p-1.5 rounded-full hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"

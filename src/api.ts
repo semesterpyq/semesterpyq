@@ -951,7 +951,16 @@ export const api = {
   }): Promise<QuestionPaper[]> => {
     try {
       const fsData = await firestoreApi.getPapers(params);
-      if (fsData && fsData.length > 0) return fsData;
+      if (fsData && fsData.length > 0) {
+        if (typeof window !== 'undefined') {
+          import('./utils/pdfViewer')
+            .then(({ syncPaperToServerCache }) => {
+              fsData.forEach((p) => syncPaperToServerCache(p));
+            })
+            .catch(() => {});
+        }
+        return fsData;
+      }
 
       // Try local/dev server as secondary
       try {

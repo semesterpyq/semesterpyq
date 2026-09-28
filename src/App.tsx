@@ -52,14 +52,30 @@ export default function App() {
   });
 
   useEffect(() => {
-    const handleHashChange = () => {
-      setIsAdmin(window.location.hash.toLowerCase().includes('admin') || window.location.pathname.toLowerCase().endsWith('/admin'));
+    const checkHashForDirectPaperOrAdmin = async () => {
+      const hash = window.location.hash || '';
+      setIsAdmin(hash.toLowerCase().includes('admin') || window.location.pathname.toLowerCase().endsWith('/admin'));
+
+      // Support GitHub Pages 404.html redirect for /#/api/papers/:id/view/:filename
+      const paperMatch = hash.match(/\/api\/papers\/([^/?#]+)\/view\/([^?#]+)/i);
+      if (paperMatch && paperMatch[1]) {
+        const paperId = decodeURIComponent(paperMatch[1]);
+        try {
+          const foundPaper = await api.getPaperById(paperId);
+          if (foundPaper) {
+            setSelectedPaperForModal(foundPaper);
+          }
+        } catch (err) {
+          console.warn('Direct paper route fallback notice:', err);
+        }
+      }
     };
-    window.addEventListener('hashchange', handleHashChange);
-    window.addEventListener('popstate', handleHashChange);
+    checkHashForDirectPaperOrAdmin();
+    window.addEventListener('hashchange', checkHashForDirectPaperOrAdmin);
+    window.addEventListener('popstate', checkHashForDirectPaperOrAdmin);
     return () => {
-      window.removeEventListener('hashchange', handleHashChange);
-      window.removeEventListener('popstate', handleHashChange);
+      window.removeEventListener('hashchange', checkHashForDirectPaperOrAdmin);
+      window.removeEventListener('popstate', checkHashForDirectPaperOrAdmin);
     };
   }, []);
 

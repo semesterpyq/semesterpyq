@@ -6,6 +6,10 @@ import fs from 'fs';
 import multer from 'multer';
 import { createServer as createViteServer } from 'vite';
 import { db, PAPERS_UPLOAD_DIR, LOGOS_UPLOAD_DIR } from './server/db';
+import { generateQuestionPaperPdf } from './server/pdf-generator';
+import firebaseConfig from './firebase-applet-config.json';
+import { initializeApp, getApps } from 'firebase/app';
+import { getFirestore, doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import {
   handleAdminLoginStep1,
   handleAdminVerifyOtp,
@@ -13,6 +17,91 @@ import {
   handleAdminUpdateCredentials,
 } from './server/admin-auth';
 import { runSmtpDiagnostic } from './server/smtp-diagnostic';
+
+const firebaseServerApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+const serverFirestore = getFirestore(firebaseServerApp, firebaseConfig.firestoreDatabaseId);
+const paperMemoryCache = new Map<string, any>();
+
+function parseFirestoreRestDoc(docJson: any): Record<string, any> | null {
+  if (!docJson || !docJson.fields) return null;
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries<any>(docJson.fields)) {
+    if (v.stringValue !== undefined) out[k] = v.stringValue;
+    else if (v.integerValue !== undefined) out[k] = Number(v.integerValue);
+    else if (v.doubleValue !== undefined) out[k] = Number(v.doubleValue);
+    else if (v.booleanValue !== undefined) out[k] = Boolean(v.booleanValue);
+    else if (v.nullValue !== undefined) out[k] = null;
+  }
+  return out;
+}
+
+async function fetchPaperFromFirestore(paperId: string): Promise<any | null> {
+  if (!paperId) return null;
+
+  // 1. Fast Firestore REST API lookup (works reliably in Node/Cloud Run with zero WebSocket overhead)
+  try {
+    const restUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(
+      firebaseConfig.projectId
+    )}/databases/${encodeURIComponent(
+      firebaseConfig.firestoreDatabaseId
+    )}/documents/papers/${encodeURIComponent(paperId)}?key=${encodeURIComponent(firebaseConfig.apiKey)}`;
+    const resp = await fetch(restUrl);
+    if (resp.ok) {
+      const json = await resp.json();
+      const parsed = parseFirestoreRestDoc(json);
+      if (parsed && (parsed.file_url || parsed.id)) {
+        paperMemoryCache.set(paperId, parsed);
+        return parsed;
+      }
+    }
+  } catch (e) {
+    // Continue to SDK fallback
+  }
+
+  // 2. Firebase JS SDK lookup (by doc ID or query where id == paperId)
+  try {
+    const snap = await getDoc(doc(serverFirestore, 'papers', paperId));
+    if (snap.exists()) {
+      const data = snap.data();
+      paperMemoryCache.set(paperId, data);
+      return data;
+    }
+    const qSnap = await getDocs(query(collection(serverFirestore, 'papers'), where('id', '==', paperId)));
+    if (!qSnap.empty) {
+      const data = qSnap.docs[0].data();
+      paperMemoryCache.set(paperId, data);
+      return data;
+    }
+  } catch (e) {
+    console.warn('Firestore server lookup notice:', e);
+  }
+
+  return null;
+}
+
+async function resolvePaperRecord(paperId: string, fallbackMeta: Record<string, any> = {}): Promise<any> {
+  if (paperId) {
+    const cached = paperMemoryCache.get(paperId);
+    if (cached && cached.file_url && cached.file_url !== '/assets/sample-paper.pdf') {
+      return { ...fallbackMeta, ...cached };
+    }
+
+    const local = db.getPaperById(paperId);
+    if (local && local.file_url && local.file_url !== '/assets/sample-paper.pdf') {
+      paperMemoryCache.set(paperId, local);
+      return { ...fallbackMeta, ...local };
+    }
+
+    const fsPaper = await fetchPaperFromFirestore(paperId);
+    if (fsPaper) {
+      return { ...fallbackMeta, ...(local || {}), ...fsPaper };
+    }
+
+    if (cached) return { ...fallbackMeta, ...cached };
+    if (local) return { ...fallbackMeta, ...local };
+  }
+  return fallbackMeta;
+}
 
 const app = express();
 const PORT = 3000;
@@ -100,6 +189,11 @@ function requireAdminAuth(req: express.Request, res: express.Response, next: exp
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.get('/ads.txt', (req, res) => {
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.send('google.com, pub-5868909493875712, DIRECT, f08c47fec0942fa0\n');
 });
 
 app.get('/api/settings', (req, res) => {
@@ -204,16 +298,36 @@ app.get('/api/papers', (req, res) => {
   res.json(db.getQuestionPapers({ universityId, courseId, yearId, semesterId, subjectId, paperYear }, false));
 });
 
-app.get('/api/papers/:id', (req, res) => {
-  const paper = db.getPaperById(req.params.id);
-  if (!paper) return res.status(404).json({ error: 'Question paper not found' });
+app.get('/api/papers/:id', async (req, res) => {
+  const paper = await resolvePaperRecord(req.params.id);
+  if (!paper || !paper.id) return res.status(404).json({ error: 'Question paper not found' });
   res.json(paper);
+});
+
+// Public cache sync so client-fetched Firestore papers are immediately available for native browser PDF viewing
+app.post('/api/papers/sync-cache', (req, res) => {
+  try {
+    const { paper, papers } = req.body || {};
+    if (paper && paper.id) {
+      paperMemoryCache.set(paper.id, paper);
+    }
+    if (Array.isArray(papers)) {
+      for (const p of papers) {
+        if (p && p.id) {
+          paperMemoryCache.set(p.id, p);
+        }
+      }
+    }
+    res.json({ ok: true });
+  } catch {
+    res.json({ ok: false });
+  }
 });
 
 // View / Stream PDF
 const servePdfInline = async (req: express.Request, res: express.Response) => {
   const paperId = req.params.id || (req.query.id as string);
-  const paper = (paperId ? db.getPaperById(paperId) : null) || {
+  const paper = await resolvePaperRecord(paperId, {
     id: paperId || 'qp-default',
     title: (req.query.title as string) || 'Examination Question Paper',
     course_name: (req.query.courseName as string) || 'Undergraduate Course',
@@ -227,7 +341,7 @@ const servePdfInline = async (req: express.Request, res: express.Response) => {
     duration: '3 Hours',
     file_name: req.params.filename || (req.query.fileName as string),
     file_url: (req.query.fileUrl as string),
-  };
+  });
 
   try {
     if (paper.id) db.incrementPaperView(paper.id);
@@ -255,10 +369,13 @@ const servePdfInline = async (req: express.Request, res: express.Response) => {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
 
-  // 1. Data URI
+  // 1. Data URI (stored in Firestore or local DB)
   if (paper.file_url && paper.file_url.startsWith('data:')) {
     try {
-      const base64Data = paper.file_url.split(',')[1] || paper.file_url;
+      const commaIdx = paper.file_url.indexOf(',');
+      const base64Data = (commaIdx !== -1 ? paper.file_url.slice(commaIdx + 1) : paper.file_url)
+        .trim()
+        .replace(/[\s\r\n]/g, '');
       const pdfBuf = Buffer.from(base64Data, 'base64');
       if (pdfBuf.length >= 4 && pdfBuf.slice(0, 4).toString() === '%PDF') {
         res.setHeader('Content-Length', pdfBuf.length);
@@ -279,7 +396,7 @@ const servePdfInline = async (req: express.Request, res: express.Response) => {
     }
   }
 
-  // 3. Fallback: check papers upload directory for matched paper id
+  // 3. Check papers upload directory for matched paper id
   if (paper.id) {
     const possibleFiles = fs.existsSync(PAPERS_UPLOAD_DIR) ? fs.readdirSync(PAPERS_UPLOAD_DIR) : [];
     const matched = possibleFiles.find((f: string) => f.includes(paper.id));
@@ -289,6 +406,56 @@ const servePdfInline = async (req: express.Request, res: express.Response) => {
       res.setHeader('Content-Length', stats.size);
       return fs.createReadStream(p).pipe(res);
     }
+  }
+
+  // 4. External HTTP/HTTPS URL or Google Drive URL
+  if (paper.file_url && (paper.file_url.startsWith('http://') || paper.file_url.startsWith('https://'))) {
+    try {
+      let targetFetchUrl = paper.file_url;
+      const driveMatch =
+        paper.file_url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+        paper.file_url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      if (paper.file_url.includes('drive.google.com') && driveMatch && driveMatch[1]) {
+        targetFetchUrl = `https://drive.google.com/uc?export=download&id=${driveMatch[1]}`;
+      }
+      const extRes = await fetch(targetFetchUrl);
+      if (extRes.ok) {
+        const arrBuf = await extRes.arrayBuffer();
+        const pdfBuf = Buffer.from(arrBuf);
+        if (pdfBuf.length >= 4 && pdfBuf.slice(0, 4).toString() === '%PDF') {
+          res.setHeader('Content-Length', pdfBuf.length);
+          return res.send(pdfBuf);
+        }
+      }
+      if (paper.file_url.includes('drive.google.com') && driveMatch && driveMatch[1]) {
+        return res.redirect(`https://drive.google.com/file/d/${driveMatch[1]}/preview`);
+      }
+      return res.redirect(paper.file_url);
+    } catch (e) {
+      console.warn('External PDF proxy notice:', e);
+    }
+  }
+
+  // 5. Fallback: generate clean official PDF so browser viewer always displays the paper
+  try {
+    const generatedBuf = await generateQuestionPaperPdf({
+      collegeName: paper.university_name || 'Semester (PYQs)',
+      courseName: paper.course_name || 'Undergraduate Course',
+      courseCode: paper.course_code || 'ACAD',
+      yearName: paper.year_name || 'Academic Session',
+      subjectName: paper.subject_name || paper.title || 'Subject Examination Paper',
+      subjectCode: paper.subject_code || paper.paper_code || 'QP',
+      paperTitle: paper.title || 'Examination Question Paper',
+      examYear: paper.paper_year || paper.exam_year || 2024,
+      examSession: paper.exam_session || 'Semester Examination',
+      paperCode: paper.paper_code || 'QP',
+      totalMarks: paper.total_marks || 75,
+      duration: paper.duration || '3 Hours',
+    });
+    res.setHeader('Content-Length', generatedBuf.length);
+    return res.send(generatedBuf);
+  } catch (genErr) {
+    console.error('Fallback PDF generation error:', genErr);
   }
 
   return res.status(404).json({ error: 'PDF document not found' });
@@ -301,7 +468,7 @@ app.get('/api/papers/:id/view/:filename', servePdfInline);
 
 // Download PDF
 app.get('/api/papers/:id/download', async (req, res) => {
-  const paper = db.getPaperById(req.params.id) || {
+  const paper = await resolvePaperRecord(req.params.id, {
     id: req.params.id,
     title: (req.query.title as string) || 'Examination Question Paper',
     course_name: (req.query.courseName as string) || 'Undergraduate Course',
@@ -313,7 +480,7 @@ app.get('/api/papers/:id/download', async (req, res) => {
     exam_session: 'Main Examination',
     total_marks: 75,
     duration: '3 Hours',
-  };
+  });
 
   try {
     db.incrementPaperDownload(paper.id);
@@ -321,14 +488,23 @@ app.get('/api/papers/:id/download', async (req, res) => {
     // ignore
   }
 
-  const rawName = `${paper.paper_code || 'paper'}-${paper.paper_year || paper.exam_year || 2024}.pdf`;
-  const safeFilename = rawName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const rawName =
+    paper.file_name && paper.file_name !== 'paper.pdf'
+      ? paper.file_name
+      : `${paper.paper_code || 'paper'}-${paper.paper_year || paper.exam_year || 2024}.pdf`;
+  const safeFilename = (rawName.toLowerCase().endsWith('.pdf') ? rawName : `${rawName}.pdf`).replace(
+    /[^a-zA-Z0-9._-]/g,
+    '_'
+  );
 
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   if (paper.file_url && paper.file_url.startsWith('data:')) {
     try {
-      const base64Data = paper.file_url.split(',')[1] || paper.file_url;
+      const commaIdx = paper.file_url.indexOf(',');
+      const base64Data = (commaIdx !== -1 ? paper.file_url.slice(commaIdx + 1) : paper.file_url)
+        .trim()
+        .replace(/[\s\r\n]/g, '');
       const pdfBuf = Buffer.from(base64Data, 'base64');
       if (pdfBuf.length >= 4 && pdfBuf.slice(0, 4).toString() === '%PDF') {
         res.setHeader('Content-Type', 'application/pdf');
@@ -348,6 +524,29 @@ app.get('/api/papers/:id/download', async (req, res) => {
       res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
       return res.download(filePath, safeFilename);
     }
+  }
+
+  try {
+    const generatedBuf = await generateQuestionPaperPdf({
+      collegeName: paper.university_name || 'Semester (PYQs)',
+      courseName: paper.course_name || 'Undergraduate Course',
+      courseCode: paper.course_code || 'ACAD',
+      yearName: paper.year_name || 'Academic Session',
+      subjectName: paper.subject_name || paper.title || 'Subject Examination Paper',
+      subjectCode: paper.subject_code || paper.paper_code || 'QP',
+      paperTitle: paper.title || 'Examination Question Paper',
+      examYear: paper.paper_year || paper.exam_year || 2024,
+      examSession: paper.exam_session || 'Semester Examination',
+      paperCode: paper.paper_code || 'QP',
+      totalMarks: paper.total_marks || 75,
+      duration: paper.duration || '3 Hours',
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+    res.setHeader('Content-Length', generatedBuf.length);
+    return res.send(generatedBuf);
+  } catch (e) {
+    console.error('Download fallback generation error:', e);
   }
 
   return res.status(404).json({ error: 'PDF document not found' });

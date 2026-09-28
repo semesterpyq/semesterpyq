@@ -168,18 +168,100 @@ export const getPaperFileName = (paper: DownloadablePaper): string => {
   return rawName.replace(/[^a-zA-Z0-9._-]/g, '_');
 };
 
+const PDF_CACHE_NAME = 'lbs-pdf-cache-v1';
+
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/pdf-sw.js').catch(() => {});
+  });
+}
+
+export const cachePaperPdfInBrowserCache = async (paper: DownloadablePaper): Promise<void> => {
+  if (typeof window === 'undefined' || !('caches' in window) || !paper || !paper.id) return;
+  try {
+    const fileName = getPaperFileName(paper);
+    const pathKey = `/api/papers/${encodeURIComponent(paper.id)}/view/${encodeURIComponent(fileName)}`;
+    let pdfBytes: Uint8Array | null = null;
+
+    if (paper.file_url && paper.file_url.startsWith('data:')) {
+      const commaIdx = paper.file_url.indexOf(',');
+      const base64Data = (commaIdx !== -1 ? paper.file_url.slice(commaIdx + 1) : paper.file_url)
+        .trim()
+        .replace(/[\s\r\n]/g, '');
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      if (isPdfByteArray(bytes)) {
+        pdfBytes = bytes;
+      }
+    }
+
+    if (!pdfBytes) return;
+
+    const cache = await caches.open(PDF_CACHE_NAME);
+    const response = new Response(pdfBytes as unknown as BodyInit, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Length': String(pdfBytes.byteLength),
+        'Content-Disposition': `inline; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      },
+    });
+    await cache.put(pathKey, response);
+  } catch {
+    // ignore cache errors
+  }
+};
+
+export const syncPaperToServerCache = (paper: DownloadablePaper): void => {
+  if (typeof window === 'undefined' || !paper || !paper.id) return;
+  cachePaperPdfInBrowserCache(paper);
+  try {
+    fetch('/api/papers/sync-cache', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paper }),
+    }).catch(() => {});
+  } catch {
+    // ignore
+  }
+};
+
 export const openPaperPdfInBrowser = async (paper: DownloadablePaper): Promise<void> => {
   const fileName = getPaperFileName(paper);
   const parsed = parsePdfUrl(paper.file_url);
 
+  // Ensure server memory cache and browser Service Worker Cache API have this paper record immediately
+  syncPaperToServerCache(paper);
+  await cachePaperPdfInBrowserCache(paper);
+
   // If paper is Google Drive
   if (parsed.isGoogleDrive && parsed.previewUrl) {
-    window.open(parsed.previewUrl, '_blank');
+    const driveWin = window.open(parsed.previewUrl, '_blank');
+    if (!driveWin) {
+      throw new Error('Popup blocked');
+    }
     return;
   }
 
-  // Real database filename endpoint that opens directly in default browser PDF viewer
-  const viewerUrl = `/api/papers/${paper.id}/view/${encodeURIComponent(fileName)}`;
-  window.open(viewerUrl, '_blank');
+  // Pass fallback metadata in query string and open real database filename endpoint in default browser PDF viewer
+  const queryParams = new URLSearchParams();
+  if (paper.title) queryParams.set('title', paper.title);
+  if (paper.course_name) queryParams.set('courseName', paper.course_name);
+  if (paper.course_code) queryParams.set('courseCode', paper.course_code);
+  if (paper.subject_name) queryParams.set('subjectName', paper.subject_name);
+  if (paper.paper_code) queryParams.set('paperCode', paper.paper_code);
+  if (paper.paper_year || paper.exam_year) {
+    queryParams.set('paperYear', String(paper.paper_year || paper.exam_year));
+  }
+  const qs = queryParams.toString();
+  const viewerUrl = `/api/papers/${encodeURIComponent(paper.id)}/view/${encodeURIComponent(fileName)}${qs ? `?${qs}` : ''}`;
+
+  const win = window.open(viewerUrl, '_blank');
+  if (!win) {
+    throw new Error('Popup blocked');
+  }
 };
 
